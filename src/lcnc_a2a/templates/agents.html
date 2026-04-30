@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Agents - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--dashboard">
+  <h1 class="cds--type-productive-heading-04">Your agents</h1>
+  <p class="cds--type-body-long-01">Signed in as {{ user.email }}.</p>
+  {% if agents %}
+    <ul>
+      {% for agent in agents %}<li>{{ agent.name }}</li>{% endfor %}
+    </ul>
+  {% else %}
+    <div class="cds--empty-state">
+      <p>No agents yet. Create your first agent to get started.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

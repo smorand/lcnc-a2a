@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en" data-carbon-theme="g100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}LCNC A2A Builder{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/carbon.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="cds--g100">
+  <header class="cds--header" role="banner">
+    <a class="cds--header__name" href="/agents">LCNC A2A Builder</a>
+    {% block nav %}{% endblock %}
+  </header>
+  <main class="cds--content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Sign in - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--login">
+  <h1 class="cds--type-productive-heading-04">Sign in</h1>
+  <form method="POST" action="/login" hx-post="/login" hx-target="this" hx-swap="outerHTML">
+    {% include "partials/login_form.html" %}
+  </form>
+</section>
+{% endblock %}

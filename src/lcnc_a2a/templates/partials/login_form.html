@@ -1,0 +1,11 @@
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="cds--form-item">
+  <label for="email" class="cds--label">Email</label>
+  <input id="email" type="text" name="email" class="cds--text-input" autocomplete="email">
+</div>
+<div class="cds--form-item">
+  <label for="name" class="cds--label">Name</label>
+  <input id="name" type="text" name="name" class="cds--text-input" autocomplete="name">
+</div>
+{% if error %}<p class="cds--inline-notification cds--inline-notification--error" data-error-code="{{ error }}">{{ error }}</p>{% endif %}
+<button type="submit" class="cds--btn cds--btn--primary">Sign in</button>

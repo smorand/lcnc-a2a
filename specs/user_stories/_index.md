@@ -8,7 +8,7 @@
 
 | Order | ID | Title | FRs | Scenarios | Tests | Depends On | Complexity | Status |
 |-------|------|-------|-----|-----------|-------|------------|------------|--------|
-| 1 | US-001 | Project foundation, dev mode login, base UI | FR-001, FR-023 (util/startup), FR-025, FR-026 | SC-001 | 10 | — | M | ready |
+| 1 | US-001 | Project foundation, dev mode login, base UI | FR-001, FR-023 (util/startup), FR-025, FR-026 | SC-001 | 10 | — | M | done (archived) |
 | 2 | US-002 | Agent dashboard, agent creation, per-agent API keys | FR-002, FR-003, FR-007, FR-023 | SC-002, SC-003 | 15 | US-001 | L | ready |
 | 3 | US-003 | Agent edit, delete, start/stop lifecycle | FR-004, FR-005, FR-006 | SC-004, SC-005, SC-006 | 10 | US-002 | M | ready |
 | 4 | US-004 | MCP tool configuration & discovery | FR-008, FR-023 (applied to MCP secrets) | SC-007 | 7 | US-002 | M | ready |
