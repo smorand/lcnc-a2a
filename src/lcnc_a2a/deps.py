@@ -13,6 +13,7 @@ from lcnc_a2a.auth.provider import AuthProvider
 from lcnc_a2a.auth.session import SessionManager
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.db import Database
+from lcnc_a2a.settings import Settings
 
 
 def get_db_singleton(request: Request) -> Database:
@@ -44,3 +45,7 @@ def get_templates(request: Request) -> Jinja2Templates:
 
 def get_crypto(request: Request) -> CryptoService:
     return request.app.state.crypto  # type: ignore[no-any-return]
+
+
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings  # type: ignore[no-any-return]

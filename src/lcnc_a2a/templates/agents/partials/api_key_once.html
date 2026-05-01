@@ -1,0 +1,6 @@
+{% set _key = plain_key|default(one_time_key) %}
+<div class="cds--inline-notification cds--inline-notification--warning api-key-once" data-key-label="{{ label|default('default') }}">
+  <p>Copy this API key now. It will not be shown again in plain text.</p>
+  <code class="api-key-once__value">{{ _key }}</code>
+  <button type="button" class="cds--btn cds--btn--secondary" data-copy-target="{{ _key }}">Copy</button>
+</div>

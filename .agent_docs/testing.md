@@ -33,3 +33,34 @@ The tests need a live PostgreSQL 14+ at `localhost:5432`. The default test DB na
 ## Adding tests
 
 For US-002+: follow this conftest pattern. New ORM models will land in `src/lcnc_a2a/models/`; ensure they are imported via `lcnc_a2a.models.__init__` so `Base.metadata.create_all` picks them up.
+
+## US-002 fixtures
+
+- `login_as(email, name)` -> async client with the session cookie set.
+- `fetch_user_id(email)` -> UUID lookup after login.
+- `seed_user(email, name)` -> create users directly without the login flow.
+- `seed_agent(user_id, name=..., ...)` -> insert an `agents` row via SQL.
+- `seed_run(agent_id, started_at=..., status=..., tokens_in=..., ...)` -> insert an `agent_runs` row.
+- `perf_seed(user_id)` -> bulk-insert 50 agents and 1000 runs for the E2E-102 perf baseline.
+
+Per-test truncation cascades over `agent_runs, agent_api_keys, agents, sessions, users`.
+
+## Acceptance tests covered (US-002)
+
+| Test ID | File | Notes |
+|---|---|---|
+| E2E-006 | tests/e2e/test_dashboard.py | dashboard cross-user isolation |
+| E2E-007 | tests/e2e/test_dashboard.py | empty state contains `Create agent` |
+| E2E-008 | tests/e2e/test_dashboard.py | window filter excludes 60-day-old runs |
+| E2E-009 | tests/e2e/test_dashboard.py | failed runs still counted |
+| E2E-010 | tests/e2e/test_dashboard.py | NULL cost forces `n/a` cell |
+| E2E-012 | tests/e2e/test_create_agent.py | create happy path + Fernet round-trip |
+| E2E-013 | tests/e2e/test_create_agent.py | missing name → `name_required` |
+| E2E-014 | tests/e2e/test_create_agent.py | duplicate name per user → `name_taken` |
+| E2E-015 | tests/e2e/test_create_agent.py | PE missing prompts → `prompts_required` |
+| E2E-016 | tests/e2e/test_create_agent.py | `max_steps=51` → `max_steps_out_of_range` |
+| E2E-019 | tests/e2e/test_create_agent.py | Unicode persistence |
+| E2E-017 | tests/e2e/test_api_keys.py | hash + last4 stored; plain key absent |
+| E2E-018 | tests/e2e/test_api_keys.py | provider key Fernet round trip |
+| E2E-097 | tests/e2e/test_api_keys.py | provider key never echoed; `********` shown |
+| E2E-102 | tests/e2e/test_dashboard.py | p95 < 500 ms with 50 agents / 1000 runs |

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ agent.name }} - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--agent-detail">
+  <h1 class="cds--type-productive-heading-04">{{ agent.name }}</h1>
+  <p class="cds--type-body-long-01">Mode: {{ agent.mode }} · Model: {{ agent.model_id }} · Status: {{ agent.status }}</p>
+
+  {% if one_time_key %}
+    {% include "agents/partials/api_key_once.html" with context %}
+  {% endif %}
+
+  <h2 class="cds--type-productive-heading-03">Configuration</h2>
+  <dl class="cds--definition-list">
+    <dt>Provider</dt><dd>{{ agent.model_provider }}</dd>
+    <dt>Endpoint</dt><dd>{{ agent.model_endpoint }}</dd>
+    <dt>Provider API key</dt><dd>********</dd>
+    {% if agent.description %}<dt>Description</dt><dd>{{ agent.description }}</dd>{% endif %}
+    <dt>Max loops</dt><dd>{{ agent.max_loops }}</dd>
+    <dt>Max tokens</dt><dd>{{ agent.max_tokens }}</dd>
+    {% if agent.similarity_threshold is not none %}
+      <dt>Similarity threshold</dt><dd>{{ agent.similarity_threshold }}</dd>
+    {% endif %}
+    {% if agent.max_steps is not none %}
+      <dt>Max steps</dt><dd>{{ agent.max_steps }}</dd>
+    {% endif %}
+  </dl>
+
+  <h2 class="cds--type-productive-heading-03">API keys</h2>
+  <table class="cds--data-table">
+    <thead>
+      <tr><th>Label</th><th>Last 4</th><th>Created</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for key in keys %}
+        <tr class="api-key-row" data-key-id="{{ key.id }}">
+          <td>{{ key.label }}</td>
+          <td>{{ key.key_last4 }}</td>
+          <td>{{ key.created_at.isoformat() }}</td>
+          <td>{% if key.revoked_at %}revoked{% else %}active{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <a class="cds--link" href="/agents">Back to dashboard</a>
+</section>
+{% endblock %}

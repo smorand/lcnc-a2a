@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Agents - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--dashboard">
+  <header class="cds--dashboard__header">
+    <h1 class="cds--type-productive-heading-04">Your agents</h1>
+    <p class="cds--type-body-long-01">Signed in as {{ user.email }}.</p>
+    <a class="cds--btn cds--btn--primary" href="/agents/new">Create agent</a>
+  </header>
+
+  {% if rows %}
+    <table class="cds--data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Mode</th>
+          <th>Model</th>
+          <th>Status</th>
+          <th>Requests</th>
+          <th>Tokens in</th>
+          <th>Tokens out</th>
+          <th>Avg duration (ms)</th>
+          <th>Avg loops</th>
+          <th>Total time (ms)</th>
+          <th>Cost (USD)</th>
+          <th>Last run</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          {% include "agents/partials/agent_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="cds--empty-state">
+      <p>No agents yet. Create your first agent to get started.</p>
+      <a class="cds--btn cds--btn--primary" href="/agents/new">Create agent</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

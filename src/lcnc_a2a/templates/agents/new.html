@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Create agent - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--form-container">
+  <h1 class="cds--type-productive-heading-04">Create agent</h1>
+  {% if error %}
+    <div class="cds--inline-notification cds--inline-notification--error" data-error-code="{{ error }}">
+      <p>{{ error }}</p>
+    </div>
+  {% endif %}
+  <form method="post" action="/agents" class="cds--form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label class="cds--label" for="name">Name</label>
+    <input class="cds--text-input" id="name" name="name" value="{{ form.name|default('', true) }}" maxlength="120" required>
+
+    <label class="cds--label" for="description">Description</label>
+    <textarea class="cds--text-area" id="description" name="description" maxlength="2000">{{ form.description|default('', true) }}</textarea>
+
+    <label class="cds--label" for="mode">Mode</label>
+    <select class="cds--select-input" id="mode" name="mode">
+      {% for m in ["simple", "react", "plan_execute"] %}
+        <option value="{{ m }}" {% if form.mode == m %}selected{% endif %}>{{ m }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="cds--label" for="model_provider">Model provider</label>
+    <select class="cds--select-input" id="model_provider" name="model_provider">
+      {% for p in ["openrouter", "openai_compatible"] %}
+        <option value="{{ p }}" {% if form.model_provider == p %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="cds--label" for="model_endpoint">Model endpoint</label>
+    <input class="cds--text-input" id="model_endpoint" name="model_endpoint" value="{{ form.model_endpoint|default('https://openrouter.ai/api/v1', true) }}">
+
+    <label class="cds--label" for="model_id">Model ID</label>
+    <input class="cds--text-input" id="model_id" name="model_id" value="{{ form.model_id|default('', true) }}" maxlength="200" required>
+
+    <label class="cds--label" for="provider_api_key">Provider API key</label>
+    <input class="cds--text-input" id="provider_api_key" name="provider_api_key" type="password" autocomplete="off">
+
+    <label class="cds--label" for="system_prompt">System prompt (Simple / ReAct)</label>
+    <textarea class="cds--text-area" id="system_prompt" name="system_prompt">{{ form.system_prompt|default('', true) }}</textarea>
+
+    <label class="cds--label" for="planner_prompt">Planner prompt (PE)</label>
+    <textarea class="cds--text-area" id="planner_prompt" name="planner_prompt">{{ form.planner_prompt|default('', true) }}</textarea>
+
+    <label class="cds--label" for="executor_prompt">Executor prompt (PE)</label>
+    <textarea class="cds--text-area" id="executor_prompt" name="executor_prompt">{{ form.executor_prompt|default('', true) }}</textarea>
+
+    <label class="cds--label" for="max_loops">Max loops</label>
+    <input class="cds--text-input" id="max_loops" name="max_loops" value="{{ form.max_loops|default('', true) }}">
+
+    <label class="cds--label" for="max_tokens">Max tokens</label>
+    <input class="cds--text-input" id="max_tokens" name="max_tokens" value="{{ form.max_tokens|default('', true) }}">
+
+    <label class="cds--label" for="similarity_threshold">Similarity threshold (ReAct)</label>
+    <input class="cds--text-input" id="similarity_threshold" name="similarity_threshold" value="{{ form.similarity_threshold|default('', true) }}">
+
+    <label class="cds--label" for="max_steps">Max steps (PE)</label>
+    <input class="cds--text-input" id="max_steps" name="max_steps" value="{{ form.max_steps|default('', true) }}">
+
+    <button class="cds--btn cds--btn--primary" type="submit">Create agent</button>
+  </form>
+</section>
+{% endblock %}

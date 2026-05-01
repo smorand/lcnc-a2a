@@ -19,6 +19,7 @@ from lcnc_a2a.auth.session import SessionManager
 from lcnc_a2a.crypto import ENCRYPTION_KEY_REQUIRED_MESSAGE, CryptoService, InvalidEncryptionKeyError
 from lcnc_a2a.db import Database
 from lcnc_a2a.observability.otel import configure_tracing
+from lcnc_a2a.routes import agents as agents_routes
 from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
 from lcnc_a2a.settings import Settings
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(auth_routes.router)
+    app.include_router(agents_routes.router)
     app.include_router(dashboard_routes.router)
 
     return app

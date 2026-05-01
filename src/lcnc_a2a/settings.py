@@ -26,3 +26,4 @@ class Settings(BaseSettings):
     trace_file: Path = Path("traces/lcnc-a2a.jsonl")
     session_expiry_hours: int = 24
     csrf_max_age_seconds: int = 3600
+    metrics_window_days: int = 30
