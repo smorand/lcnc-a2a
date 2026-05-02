@@ -5,6 +5,26 @@
   <h1 class="cds--type-productive-heading-04">{{ agent.name }}</h1>
   <p class="cds--type-body-long-01">Mode: {{ agent.mode }} · Model: {{ agent.model_id }} · Status: {{ agent.status }}</p>
 
+  <div class="cds--agent-lifecycle">
+    <a class="cds--btn cds--btn--secondary" href="/agents/{{ agent.id }}/edit">Edit</a>
+    {% if agent.status == "started" %}
+      <form method="post" action="/agents/{{ agent.id }}/stop" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="cds--btn cds--btn--secondary" type="submit">Stop</button>
+      </form>
+    {% else %}
+      <form method="post" action="/agents/{{ agent.id }}/start" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="cds--btn cds--btn--primary" type="submit">Start</button>
+      </form>
+    {% endif %}
+    <form method="post" action="/agents/{{ agent.id }}" style="display:inline" onsubmit="return confirm('Delete this agent? All keys, runs and contexts will be removed.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="_method" value="DELETE">
+      <button class="cds--btn cds--btn--danger" type="submit">Delete</button>
+    </form>
+  </div>
+
   {% if one_time_key %}
     {% include "agents/partials/api_key_once.html" with context %}
   {% endif %}

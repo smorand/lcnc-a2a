@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -17,7 +18,14 @@ from lcnc_a2a.deps import get_crypto, get_csrf_manager, get_db, get_templates
 from lcnc_a2a.models.agent_api_key import AgentApiKey
 from lcnc_a2a.models.user import User
 from lcnc_a2a.schemas.agent_form import AgentFormError, validate_create_agent_form
-from lcnc_a2a.services.agents import AgentNameTakenError, create_agent, get_agent_for_user
+from lcnc_a2a.services.agents import (
+    AgentNameTakenError,
+    create_agent,
+    delete_agent_cascade,
+    get_agent_for_user,
+    set_status,
+    update_agent,
+)
 from lcnc_a2a.services.api_keys import create_agent_api_key
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
@@ -186,6 +194,206 @@ async def agent_detail(
     return response
 
 
+@router.get("/agents/{agent_id}/edit")
+async def edit_agent_form(
+    request: Request,
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(fetch_current_user),
+    csrf: CSRFManager = Depends(get_csrf_manager),
+    templates: Jinja2Templates = Depends(get_templates),
+) -> Response:
+    """Render the prefilled edit-agent form."""
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    agent = await get_agent_for_user(db, agent_id=agent_id, user_id=user.id)
+    if agent is None:
+        return Response(content="not_found", status_code=404)
+
+    form = {
+        "name": agent.name,
+        "description": agent.description or "",
+        "mode": agent.mode,
+        "model_provider": agent.model_provider,
+        "model_endpoint": agent.model_endpoint,
+        "model_id": agent.model_id,
+        "system_prompt": agent.system_prompt or "",
+        "planner_prompt": agent.planner_prompt or "",
+        "executor_prompt": agent.executor_prompt or "",
+        "max_loops": str(agent.max_loops),
+        "max_tokens": str(agent.max_tokens),
+        "similarity_threshold": "" if agent.similarity_threshold is None else str(agent.similarity_threshold),
+        "max_steps": "" if agent.max_steps is None else str(agent.max_steps),
+    }
+    return templates.TemplateResponse(
+        request,
+        "agents/edit.html",
+        {
+            "user": user,
+            "agent": agent,
+            "form": form,
+            "csrf_token": csrf.generate(),
+            "error": None,
+        },
+    )
+
+
+@router.post("/agents/{agent_id}")
+async def update_or_delete_agent(
+    request: Request,
+    agent_id: uuid.UUID,
+    name: str = Form(""),
+    description: str = Form(""),
+    mode: str = Form(""),
+    model_provider: str = Form(""),
+    model_endpoint: str = Form(""),
+    model_id: str = Form(""),
+    provider_api_key: str = Form(""),
+    system_prompt: str = Form(""),
+    planner_prompt: str = Form(""),
+    executor_prompt: str = Form(""),
+    max_loops: str = Form(""),
+    max_tokens: str = Form(""),
+    similarity_threshold: str = Form(""),
+    max_steps: str = Form(""),
+    csrf_token: str = Form(""),
+    method_override: Annotated[str, Form(alias="_method")] = "",
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(fetch_current_user),
+    csrf: CSRFManager = Depends(get_csrf_manager),
+    crypto: CryptoService = Depends(get_crypto),
+    templates: Jinja2Templates = Depends(get_templates),
+) -> Response:
+    """Update or (when ``_method=DELETE``) delete an agent."""
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    if not csrf.validate(csrf_token):
+        return Response(content="csrf_invalid", status_code=403)
+
+    agent = await get_agent_for_user(db, agent_id=agent_id, user_id=user.id)
+    if agent is None:
+        return Response(content="not_found", status_code=404)
+
+    if method_override.upper() == "DELETE":
+        await delete_agent_cascade(db, agent=agent)
+        await db.commit()
+        return RedirectResponse(url="/agents", status_code=302)
+
+    raw_form = {
+        "name": name,
+        "description": description,
+        "mode": mode,
+        "model_provider": model_provider,
+        "model_endpoint": model_endpoint,
+        "model_id": model_id,
+        "system_prompt": system_prompt,
+        "planner_prompt": planner_prompt,
+        "executor_prompt": executor_prompt,
+        "max_loops": max_loops,
+        "max_tokens": max_tokens,
+        "similarity_threshold": similarity_threshold,
+        "max_steps": max_steps,
+    }
+
+    try:
+        data = validate_create_agent_form(
+            name=name,
+            description=description,
+            mode=mode,
+            model_provider=model_provider,
+            model_endpoint=model_endpoint,
+            model_id=model_id,
+            provider_api_key=provider_api_key,
+            system_prompt=system_prompt,
+            planner_prompt=planner_prompt,
+            executor_prompt=executor_prompt,
+            max_loops=max_loops,
+            max_tokens=max_tokens,
+            similarity_threshold=similarity_threshold,
+            max_steps=max_steps,
+            require_provider_api_key=False,
+        )
+    except AgentFormError as exc:
+        return _render_edit_form_error(templates, request, csrf, agent, raw_form, exc.code)
+
+    try:
+        await update_agent(
+            db,
+            agent=agent,
+            name=data.name,
+            description=data.description,
+            mode=data.mode,
+            model_provider=data.model_provider,
+            model_endpoint=data.model_endpoint,
+            model_id=data.model_id,
+            provider_api_key=data.provider_api_key,
+            crypto=crypto,
+            system_prompt=data.system_prompt,
+            planner_prompt=data.planner_prompt,
+            executor_prompt=data.executor_prompt,
+            max_loops=data.max_loops,
+            max_tokens=data.max_tokens,
+            similarity_threshold=data.similarity_threshold,
+            max_steps=data.max_steps,
+        )
+    except AgentNameTakenError:
+        return _render_edit_form_error(templates, request, csrf, agent, raw_form, "name_taken")
+
+    await db.commit()
+    return RedirectResponse(url=f"/agents/{agent.id}", status_code=302)
+
+
+@router.post("/agents/{agent_id}/start")
+async def start_agent(
+    request: Request,
+    agent_id: uuid.UUID,
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(fetch_current_user),
+    csrf: CSRFManager = Depends(get_csrf_manager),
+) -> Response:
+    """Flip ``agents.status`` to ``started``."""
+    return await _toggle_status(request, agent_id, csrf_token, "started", db, user, csrf)
+
+
+@router.post("/agents/{agent_id}/stop")
+async def stop_agent(
+    request: Request,
+    agent_id: uuid.UUID,
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(fetch_current_user),
+    csrf: CSRFManager = Depends(get_csrf_manager),
+) -> Response:
+    """Flip ``agents.status`` to ``stopped``."""
+    return await _toggle_status(request, agent_id, csrf_token, "stopped", db, user, csrf)
+
+
+async def _toggle_status(
+    request: Request,
+    agent_id: uuid.UUID,
+    csrf_token: str,
+    target_status: str,
+    db: AsyncSession,
+    user: User | None,
+    csrf: CSRFManager,
+) -> Response:
+    if user is None:
+        return RedirectResponse(url="/login", status_code=302)
+    if not csrf.validate(csrf_token):
+        return Response(content="csrf_invalid", status_code=403)
+
+    agent = await get_agent_for_user(db, agent_id=agent_id, user_id=user.id)
+    if agent is None:
+        return Response(content="not_found", status_code=404)
+
+    await set_status(db, agent=agent, status=target_status)
+    await db.commit()
+
+    referer = request.headers.get("referer") or "/agents"
+    return RedirectResponse(url=referer, status_code=302)
+
+
 @router.post("/agents/{agent_id}/keys")
 async def create_additional_key(
     request: Request,
@@ -232,5 +440,21 @@ def _render_form_error(
         request,
         "agents/new.html",
         {"csrf_token": csrf.generate(), "error": error, "form": form},
+        status_code=400,
+    )
+
+
+def _render_edit_form_error(
+    templates: Jinja2Templates,
+    request: Request,
+    csrf: CSRFManager,
+    agent: object,
+    form: dict[str, str],
+    error: str,
+) -> Response:
+    return templates.TemplateResponse(
+        request,
+        "agents/edit.html",
+        {"csrf_token": csrf.generate(), "error": error, "form": form, "agent": agent},
         status_code=400,
     )

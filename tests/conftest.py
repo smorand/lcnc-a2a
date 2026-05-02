@@ -61,7 +61,11 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(ASYNC_URL, future=True)
     async with engine.begin() as conn:
         await conn.execute(
-            text("TRUNCATE TABLE agent_runs, agent_api_keys, agents, sessions, users RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE TABLE agent_messages, agent_contexts, agent_run_steps, "
+                "agent_runs, agent_mcp_servers, agent_api_keys, agents, sessions, "
+                "users RESTART IDENTITY CASCADE"
+            )
         )
     yield engine
     await engine.dispose()

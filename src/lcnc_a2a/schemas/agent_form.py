@@ -87,6 +87,7 @@ def validate_create_agent_form(
     max_tokens: str,
     similarity_threshold: str,
     max_steps: str,
+    require_provider_api_key: bool = True,
 ) -> AgentFormData:
     """Validate form fields, raising ``AgentFormError`` with a contract error code."""
     name = name.strip()
@@ -113,7 +114,7 @@ def validate_create_agent_form(
     if len(model_id) > MODEL_ID_MAX:
         raise AgentFormError("model_id_too_long")
 
-    if not provider_api_key:
+    if require_provider_api_key and not provider_api_key:
         raise AgentFormError("provider_api_key_required")
 
     parsed_system: str | None = None

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,6 +109,61 @@ async def get_agent_for_user(db: AsyncSession, *, agent_id: uuid.UUID, user_id: 
     """Return an agent only if it belongs to ``user_id`` (404 leak protection)."""
     result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id))
     return result.scalar_one_or_none()
+
+
+async def update_agent(
+    db: AsyncSession,
+    *,
+    agent: Agent,
+    name: str,
+    description: str | None,
+    mode: str,
+    model_provider: str,
+    model_endpoint: str,
+    model_id: str,
+    provider_api_key: str,
+    crypto: CryptoService,
+    system_prompt: str | None,
+    planner_prompt: str | None,
+    executor_prompt: str | None,
+    max_loops: int,
+    max_tokens: int,
+    similarity_threshold: float | None,
+    max_steps: int | None,
+) -> Agent:
+    """Update an existing agent. Empty ``provider_api_key`` leaves the encrypted bytes unchanged."""
+    agent.name = name
+    agent.description = description or None
+    agent.mode = mode
+    agent.model_provider = model_provider
+    agent.model_endpoint = model_endpoint
+    agent.model_id = model_id
+    if provider_api_key:
+        agent.provider_api_key_enc = crypto.encrypt(provider_api_key.encode("utf-8"))
+    agent.system_prompt = system_prompt or None
+    agent.planner_prompt = planner_prompt or None
+    agent.executor_prompt = executor_prompt or None
+    agent.max_loops = max_loops
+    agent.max_tokens = max_tokens
+    agent.similarity_threshold = similarity_threshold
+    agent.max_steps = max_steps
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise AgentNameTakenError(name) from exc
+    await db.refresh(agent)
+    return agent
+
+
+async def delete_agent_cascade(db: AsyncSession, *, agent: Agent) -> None:
+    """Delete an agent; FK ``ON DELETE CASCADE`` removes all dependent rows."""
+    await db.execute(delete(Agent).where(Agent.id == agent.id))
+
+
+async def set_status(db: AsyncSession, *, agent: Agent, status: str) -> None:
+    """Atomically set ``agents.status`` for ``agent`` to ``status``."""
+    await db.execute(update(Agent).where(Agent.id == agent.id).values(status=status))
 
 
 async def list_agents_with_metrics(
