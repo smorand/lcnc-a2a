@@ -48,12 +48,19 @@ def parse_send_streaming_message(payload: dict[str, Any]) -> SendStreamingMessag
     )
 
 
-def task_status_update(state: str, *, reason: str | None = None) -> dict[str, Any]:
+def task_status_update(
+    state: str,
+    *,
+    reason: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Build a TaskStatusUpdate envelope."""
-    payload: dict[str, Any] = {"event": "TaskStatusUpdate", "state": state}
+    out: dict[str, Any] = {"event": "TaskStatusUpdate", "state": state}
     if reason is not None:
-        payload["reason"] = reason
-    return payload
+        out["reason"] = reason
+    if payload is not None:
+        out["payload"] = payload
+    return out
 
 
 def task_artifact_update(text: str) -> dict[str, Any]:

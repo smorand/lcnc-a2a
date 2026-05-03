@@ -34,10 +34,12 @@ LLM_CHAT_ALLOWED_KEYS = {
     "request_id",
 }
 
+LLM_EMBED_ALLOWED_KEYS = LLM_CHAT_ALLOWED_KEYS
 
-def _filter_llm_chat(attributes: dict[str, Any]) -> dict[str, Any]:
-    """Strict allow-list for ``llm.chat`` spans (FR-024)."""
-    return {k: v for k, v in attributes.items() if k in LLM_CHAT_ALLOWED_KEYS}
+
+def _filter_allowed(attributes: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
+    """Strict allow-list filter (FR-024)."""
+    return {k: v for k, v in attributes.items() if k in allowed}
 
 
 def _redact(attributes: dict[str, Any]) -> dict[str, Any]:
@@ -64,7 +66,12 @@ class JSONLSpanExporter(SpanExporter):
             with self._path.open("a", encoding="utf-8") as fh:
                 for span in spans:
                     raw_attrs = dict(span.attributes or {})
-                    attrs = _filter_llm_chat(raw_attrs) if span.name.startswith("llm.chat") else _redact(raw_attrs)
+                    if span.name.startswith("llm.chat"):
+                        attrs = _filter_allowed(raw_attrs, LLM_CHAT_ALLOWED_KEYS)
+                    elif span.name.startswith("llm.embed"):
+                        attrs = _filter_allowed(raw_attrs, LLM_EMBED_ALLOWED_KEYS)
+                    else:
+                        attrs = _redact(raw_attrs)
                     payload = {
                         "name": span.name,
                         "trace_id": format(span.context.trace_id, "032x") if span.context else None,
