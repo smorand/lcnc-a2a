@@ -1,0 +1,27 @@
+{# List of MCP servers attached to the agent (HTMX partial). #}
+<section class="cds--mcp-list" id="mcp-list-{{ agent.id }}">
+  <h3 class="cds--type-productive-heading-02">MCP servers</h3>
+  {% if servers %}
+    <table class="cds--data-table">
+      <thead>
+        <tr><th>Transport</th><th>Endpoint</th><th>Tools</th><th>Discovered at</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for entry in servers %}
+          <tr class="mcp-server-row" data-server-id="{{ entry.row.id }}">
+            <td>{{ entry.row.transport }}</td>
+            <td>{% if entry.row.transport == "stdio" %}{{ entry.row.command }}{% else %}{{ entry.row.url }}{% endif %}</td>
+            <td>{{ entry.tool_count }}</td>
+            <td>{% if entry.row.discovered_at %}{{ entry.row.discovered_at.isoformat() }}{% else %}<em>never</em>{% endif %}</td>
+            <td>
+              <a class="cds--link" href="/agents/{{ agent.id }}/mcp/{{ entry.row.id }}">View</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="cds--type-body-long-01"><em>No MCP servers attached.</em></p>
+  {% endif %}
+  <a class="cds--btn cds--btn--secondary" href="/agents/{{ agent.id }}/mcp/new">Add MCP server</a>
+</section>

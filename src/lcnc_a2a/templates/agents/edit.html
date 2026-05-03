@@ -64,5 +64,8 @@
     <button class="cds--btn cds--btn--primary" type="submit">Save changes</button>
     <a class="cds--link" href="/agents/{{ agent.id }}">Cancel</a>
   </form>
+
+  <div id="mcp-list" data-agent-id="{{ agent.id }}"
+       hx-get="/agents/{{ agent.id }}/mcp" hx-trigger="load" hx-swap="innerHTML"></div>
 </section>
 {% endblock %}

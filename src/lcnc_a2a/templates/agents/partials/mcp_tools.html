@@ -1,0 +1,16 @@
+{# Rendered tools list for an MCP server (HTMX partial returned by /discover). #}
+<section class="cds--mcp-tools" data-server-id="{{ row.id }}">
+  <h4 class="cds--type-productive-heading-02">Discovered tools</h4>
+  {% if tools %}
+    <ul class="cds--mcp-tools__list">
+      {% for tool in tools %}
+        <li class="mcp-tool" data-tool-name="{{ tool.name }}">
+          <strong>{{ tool.name }}</strong> &mdash; {{ tool.description }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p><em>This server reports no tools.</em></p>
+  {% endif %}
+  <p class="cds--type-helper-text-01">Discovered at {{ discovered_at.isoformat() }}.</p>
+</section>

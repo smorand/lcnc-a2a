@@ -1,0 +1,55 @@
+{# Form for adding or editing an MCP server (HTMX partial). #}
+{% set is_edit = row is defined and row is not none %}
+<section class="cds--mcp-form" data-mode="{{ 'edit' if is_edit else 'create' }}">
+  {% if error %}
+    <div class="cds--inline-notification cds--inline-notification--error" data-error-code="{{ error }}">
+      <p>{{ error }}</p>
+    </div>
+  {% endif %}
+  <form method="post"
+        action="{% if is_edit %}/agents/{{ agent.id }}/mcp/{{ row.id }}{% else %}/agents/{{ agent.id }}/mcp{% endif %}"
+        class="cds--form mcp-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label class="cds--label" for="transport">Transport</label>
+    <select class="cds--select-input" id="transport" name="transport">
+      {% set tform = form.transport|default('stdio') %}
+      <option value="stdio" {% if tform == "stdio" %}selected{% endif %}>stdio</option>
+      <option value="streamable_http" {% if tform == "streamable_http" %}selected{% endif %}>streamable_http</option>
+    </select>
+
+    <label class="cds--label" for="command">Command (stdio)</label>
+    <input class="cds--text-input" id="command" name="command" value="{{ form.command|default('', true) }}">
+
+    <label class="cds--label" for="env">Env (JSON object, stdio)</label>
+    <textarea class="cds--text-area" id="env" name="env">{{ form.env|default('', true) }}</textarea>
+    {% if is_edit and env_keys %}
+      <p class="cds--type-helper-text-01 mcp-env-mask">
+        Stored env keys: {% for k in env_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    {% endif %}
+
+    <label class="cds--label" for="cwd">Working directory (stdio, optional)</label>
+    <input class="cds--text-input" id="cwd" name="cwd" value="{{ form.cwd|default('', true) }}">
+
+    <label class="cds--label" for="url">URL (streamable_http)</label>
+    <input class="cds--text-input" id="url" name="url" value="{{ form.url|default('', true) }}">
+
+    <label class="cds--label" for="headers">Headers (JSON object, streamable_http)</label>
+    <textarea class="cds--text-area" id="headers" name="headers">{{ form.headers|default('', true) }}</textarea>
+    {% if is_edit and header_keys %}
+      <p class="cds--type-helper-text-01 mcp-header-mask">
+        Stored headers: {% for k in header_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    {% endif %}
+
+    <button class="cds--btn cds--btn--primary" type="submit">{{ "Save" if is_edit else "Create" }}</button>
+    {% if is_edit %}
+      <button class="cds--btn cds--btn--secondary mcp-discover-btn"
+              type="submit"
+              formaction="/agents/{{ agent.id }}/mcp/{{ row.id }}/discover"
+              formmethod="post">Discover tools</button>
+    {% endif %}
+    <a class="cds--link" href="/agents/{{ agent.id }}">Cancel</a>
+  </form>
+</section>

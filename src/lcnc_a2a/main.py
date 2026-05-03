@@ -22,6 +22,7 @@ from lcnc_a2a.observability.otel import configure_tracing
 from lcnc_a2a.routes import agents as agents_routes
 from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
+from lcnc_a2a.routes import mcp as mcp_routes
 from lcnc_a2a.settings import Settings
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(agents_routes.router)
     app.include_router(dashboard_routes.router)
+    app.include_router(mcp_routes.router)
 
     return app
 
