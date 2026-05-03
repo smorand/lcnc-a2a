@@ -19,10 +19,12 @@ from lcnc_a2a.auth.session import SessionManager
 from lcnc_a2a.crypto import ENCRYPTION_KEY_REQUIRED_MESSAGE, CryptoService, InvalidEncryptionKeyError
 from lcnc_a2a.db import Database
 from lcnc_a2a.observability.otel import configure_tracing
+from lcnc_a2a.routes import a2a as a2a_routes
 from lcnc_a2a.routes import agents as agents_routes
 from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
 from lcnc_a2a.routes import mcp as mcp_routes
+from lcnc_a2a.services.cancellation import CancellationRegistry
 from lcnc_a2a.settings import Settings
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -64,6 +66,7 @@ def create_app() -> FastAPI:
     sessions = SessionManager(settings.session_secret, expiry_hours=settings.session_expiry_hours)
     auth_provider = DevModeAuthProvider()
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    cancellation_registry = CancellationRegistry()
 
     configure_tracing(settings.trace_file)
 
@@ -80,12 +83,14 @@ def create_app() -> FastAPI:
     app.state.sessions = sessions
     app.state.auth_provider = auth_provider
     app.state.templates = templates
+    app.state.cancellation_registry = cancellation_registry
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     app.include_router(auth_routes.router)
     app.include_router(agents_routes.router)
     app.include_router(dashboard_routes.router)
     app.include_router(mcp_routes.router)
+    app.include_router(a2a_routes.router)
 
     return app
 

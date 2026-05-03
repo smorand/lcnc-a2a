@@ -31,7 +31,7 @@ STDERR_TRUNCATE_BYTES = 2048
 RECENT_SPAWNED_PIDS: list[int] = []
 
 
-def _scrub_env(user_env: dict[str, str] | None) -> dict[str, str]:
+def scrub_env(user_env: dict[str, str] | None) -> dict[str, str]:
     """Build the subprocess env: only PATH from parent + caller-provided values."""
     env: dict[str, str] = {}
     parent_path = os.environ.get("PATH")
@@ -40,6 +40,9 @@ def _scrub_env(user_env: dict[str, str] | None) -> dict[str, str]:
     if user_env:
         env.update(user_env)
     return env
+
+
+_scrub_env = scrub_env  # backwards-compat alias
 
 
 def _read_stderr_file(path: str) -> str:
@@ -69,7 +72,7 @@ async def discover_stdio(
     server_params = StdioServerParameters(
         command=cmd,
         args=args,
-        env=_scrub_env(env),
+        env=scrub_env(env),
         cwd=cwd,
     )
 

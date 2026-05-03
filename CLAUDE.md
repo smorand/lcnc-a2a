@@ -32,7 +32,15 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `src/lcnc_a2a/services/` - CRUD + aggregations (`agents.py` with `update_agent`/`delete_agent_cascade`/`set_status`, `api_keys.py`, `mcp_discovery.py` with create/update/delete/discover for MCP servers)
 - `src/lcnc_a2a/mcp_client/` - MCP SDK wrappers (`stdio.py` with env scrubbing + 10s timeout + PID tracking, `streamable_http.py`, `errors.py`)
 - `src/lcnc_a2a/schemas/` - form validation (`agent_form.py` with contract error codes; `require_provider_api_key=False` for edit)
-- `src/lcnc_a2a/routes/` - `auth.py` (login/logout), `dashboard.py` (`/agents` listing), `agents.py` (`/agents/new`, POST `/agents`, `/agents/{id}`, `/agents/{id}/edit`, POST `/agents/{id}` (update or `_method=DELETE`), `/agents/{id}/start`, `/agents/{id}/stop`, `/agents/{id}/keys`), `mcp.py` (`/agents/{id}/mcp`, `/agents/{id}/mcp/new`, POST `/agents/{id}/mcp`, GET/POST `/agents/{id}/mcp/{server_id}` with `_method=DELETE`, POST `/agents/{id}/mcp/{server_id}/discover`)
+- `src/lcnc_a2a/routes/` - `auth.py` (login/logout), `dashboard.py` (`/agents` listing), `agents.py` (UI flows + dispatch to A2A on `Authorization` / `application/json`), `mcp.py` (MCP CRUD + discover), `a2a.py` (GET `.well-known/agent-card.json` + `handle_a2a_post` SSE dispatcher)
+- `src/lcnc_a2a/a2a/` - `envelope.py` (SendStreamingMessage / TaskStatusUpdate / TaskArtifactUpdate), `card.py` (Agent Card builder), `sse.py` (SSE encoder)
+- `src/lcnc_a2a/auth/api_key.py` - constant-time bearer key validation (`hmac.compare_digest`)
+- `src/lcnc_a2a/llm/` - `provider.py` (LlmProvider ABC, OpenRouterProvider, OpenAiCompatibleProvider via httpx), `tool_format.py` (MCP → OpenAI tools)
+- `src/lcnc_a2a/executors/` - `base.py` (ExecutorContext + helpers), `dispatcher.py`, `simple.py` (Simple-mode loop, retries, OTel)
+- `src/lcnc_a2a/mcp_client/tool_caller.py` - call_tool_stdio / call_tool_http (env scrubbing reused)
+- `src/lcnc_a2a/services/cancellation.py` - in-process `run_id → asyncio.Event` registry
+- `src/lcnc_a2a/services/messages.py` - context get/create + soft 50 / hard 1000 cap, OpenAI payload builder
+- `src/lcnc_a2a/services/runs.py` - AgentRun lifecycle (create / append step / finalize / list_running_run_ids)
 - `src/lcnc_a2a/observability/` - OpenTelemetry tracer + JSONL exporter with redaction
 - `src/lcnc_a2a/themes/` - Carbon `g100` (dark, default), `g10` (light), `ThemeTokens` dataclass
 - `src/lcnc_a2a/templates/` - Jinja2 templates (`base.html`, `login.html`, `agents/list.html`, `agents/new.html`, `agents/detail.html`, `agents/partials/`)
@@ -40,10 +48,13 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `alembic/versions/0001_initial.py` - users + sessions schema
 - `alembic/versions/0002_agents_keys_runs.py` - agents, agent_api_keys, agent_runs schema
 - `alembic/versions/0003_lifecycle_cascade_tables.py` - agent_mcp_servers, agent_contexts, agent_messages, agent_run_steps (final schema; populated in US-004/US-005)
+- `alembic/versions/0004_agent_runs_full_schema.py` - extends agent_runs with context_id, a2a_task_id, stop_reason, completed_at, plan, final_answer, config_snapshot
 - `tests/conftest.py` - test env, schema setup (sync), per-test TRUNCATE, ASGI httpx client, `login_as`, `seed_*` helpers
 - `tests/e2e/fixtures/` - fake MCP stdio servers (`fake_mcp_stdio.py`, `fake_mcp_hang.py`, `fake_mcp_fail.py`)
 - `tests/e2e/_mcp_http_helpers.py` - respx helpers for streamable-HTTP MCP mocking
-- `tests/e2e/` - acceptance tests for US-001..US-004 (E2E-001..041, 096..102)
+- `tests/e2e/_a2a_helpers.py` - StubLlm, seed_started_agent, post_a2a, fetch_run/messages/steps helpers
+- `tests/e2e/fixtures/fake_mcp_add.py` - stdio MCP fixture exposing `add`, `flaky`, `noop` tools
+- `tests/e2e/` - acceptance tests for US-001..US-005 (E2E-001..059, 086..102)
 
 ## Conventions
 
@@ -59,7 +70,7 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 
 ## Quality Gate
 
-`make check` must pass before each commit: ruff lint, ruff format-check, mypy strict, pytest (45/45 acceptance tests).
+`make check` must pass before each commit: ruff lint, ruff format-check, mypy strict, pytest (74/74 acceptance tests).
 
 ## Documentation Index
 
@@ -68,3 +79,4 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `.agent_docs/agents_dashboard.md` - US-002 routes, aggregation rules, API-key flow
 - `.agent_docs/agent_lifecycle.md` - US-003 edit/delete/start/stop, cascade tables
 - `.agent_docs/mcp_tools.md` - US-004 MCP discovery (stdio + streamable_http), env scrubbing, transport-change rules
+- `.agent_docs/a2a_executor.md` - US-005 A2A surface, Simple executor, cancellation, OTel redaction

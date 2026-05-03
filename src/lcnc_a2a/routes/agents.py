@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -17,6 +16,7 @@ from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.deps import get_crypto, get_csrf_manager, get_db, get_templates
 from lcnc_a2a.models.agent_api_key import AgentApiKey
 from lcnc_a2a.models.user import User
+from lcnc_a2a.routes.a2a import handle_a2a_post
 from lcnc_a2a.schemas.agent_form import AgentFormError, validate_create_agent_form
 from lcnc_a2a.services.agents import (
     AgentNameTakenError,
@@ -27,6 +27,7 @@ from lcnc_a2a.services.agents import (
     update_agent,
 )
 from lcnc_a2a.services.api_keys import create_agent_api_key
+from lcnc_a2a.services.runs import list_running_run_ids_for_agent
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
 
@@ -242,29 +243,42 @@ async def edit_agent_form(
 async def update_or_delete_agent(
     request: Request,
     agent_id: uuid.UUID,
-    name: str = Form(""),
-    description: str = Form(""),
-    mode: str = Form(""),
-    model_provider: str = Form(""),
-    model_endpoint: str = Form(""),
-    model_id: str = Form(""),
-    provider_api_key: str = Form(""),
-    system_prompt: str = Form(""),
-    planner_prompt: str = Form(""),
-    executor_prompt: str = Form(""),
-    max_loops: str = Form(""),
-    max_tokens: str = Form(""),
-    similarity_threshold: str = Form(""),
-    max_steps: str = Form(""),
-    csrf_token: str = Form(""),
-    method_override: Annotated[str, Form(alias="_method")] = "",
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(fetch_current_user),
     csrf: CSRFManager = Depends(get_csrf_manager),
     crypto: CryptoService = Depends(get_crypto),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> Response:
-    """Update or (when ``_method=DELETE``) delete an agent."""
+    """Update or (when ``_method=DELETE``) delete an agent.
+
+    Also acts as the A2A endpoint when ``Authorization: Bearer ...`` is set.
+    """
+    if request.headers.get("authorization") or request.headers.get("content-type", "").startswith("application/json"):
+        return await handle_a2a_post(agent_id=agent_id, request=request, db=db, crypto=crypto)
+
+    form = await request.form()
+
+    def _f(name: str) -> str:
+        value = form.get(name, "")
+        return value if isinstance(value, str) else ""
+
+    name = _f("name")
+    description = _f("description")
+    mode = _f("mode")
+    model_provider = _f("model_provider")
+    model_endpoint = _f("model_endpoint")
+    model_id = _f("model_id")
+    provider_api_key = _f("provider_api_key")
+    system_prompt = _f("system_prompt")
+    planner_prompt = _f("planner_prompt")
+    executor_prompt = _f("executor_prompt")
+    max_loops = _f("max_loops")
+    max_tokens = _f("max_tokens")
+    similarity_threshold = _f("similarity_threshold")
+    max_steps = _f("max_steps")
+    csrf_token = _f("csrf_token")
+    method_override = _f("_method")
+
     if user is None:
         return RedirectResponse(url="/login", status_code=302)
     if not csrf.validate(csrf_token):
@@ -275,6 +289,10 @@ async def update_or_delete_agent(
         return Response(content="not_found", status_code=404)
 
     if method_override.upper() == "DELETE":
+        registry = getattr(request.app.state, "cancellation_registry", None)
+        if registry is not None:
+            running = await list_running_run_ids_for_agent(db, agent_id=agent.id)
+            registry.cancel_all_for_agent(running)
         await delete_agent_cascade(db, agent=agent)
         await db.commit()
         return RedirectResponse(url="/agents", status_code=302)

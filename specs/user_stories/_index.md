@@ -12,7 +12,7 @@
 | 2 | US-002 | Agent dashboard, agent creation, per-agent API keys | FR-002, FR-003, FR-007, FR-023 | SC-002, SC-003 | 15 | US-001 | L | ready |
 | 3 | US-003 | Agent edit, delete, start/stop lifecycle | FR-004, FR-005, FR-006 | SC-004, SC-005, SC-006 | 10 | US-002 | M | ready |
 | 4 | US-004 | MCP tool configuration & discovery | FR-008, FR-023 (applied to MCP secrets) | SC-007 | 7 | US-002 | M | ready |
-| 5 | US-005 | A2A endpoint, Agent Card, auth, Simple mode executor (full) | FR-010, FR-011, FR-012, FR-013, FR-014, FR-018, FR-021, FR-022, FR-024 | SC-005 (parts), SC-009, SC-012, multi (security/cross) | 29 | US-003, US-004 | XL | ready |
+| 5 | US-005 | A2A endpoint, Agent Card, auth, Simple mode executor (full) | FR-010, FR-011, FR-012, FR-013, FR-014, FR-018, FR-021, FR-022, FR-024 | SC-005 (parts), SC-009, SC-012, multi (security/cross) | 29 | US-003, US-004 | XL | done (archived) |
 | 6 | US-006 | ReAct mode executor with guardrails and embeddings | FR-015, FR-017, FR-019 | SC-010 | 13 | US-005 | L | ready |
 | 7 | US-007 | Plan & Execute mode executor | FR-016, FR-020 | SC-011 | 13 | US-005 | L | ready |
 | 8 | US-008 | Runs history & per-run trace UI | FR-009 (UI surface), FR-022 (display) | SC-008 | 5 | US-005 | S | ready |

@@ -24,6 +24,21 @@ REDACT_KEYS = {
     "llm.response",
 }
 
+LLM_CHAT_ALLOWED_KEYS = {
+    "model",
+    "provider",
+    "tokens.prompt",
+    "tokens.completion",
+    "cost.usd",
+    "duration.ms",
+    "request_id",
+}
+
+
+def _filter_llm_chat(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Strict allow-list for ``llm.chat`` spans (FR-024)."""
+    return {k: v for k, v in attributes.items() if k in LLM_CHAT_ALLOWED_KEYS}
+
 
 def _redact(attributes: dict[str, Any]) -> dict[str, Any]:
     redacted: dict[str, Any] = {}
@@ -48,13 +63,15 @@ class JSONLSpanExporter(SpanExporter):
         try:
             with self._path.open("a", encoding="utf-8") as fh:
                 for span in spans:
+                    raw_attrs = dict(span.attributes or {})
+                    attrs = _filter_llm_chat(raw_attrs) if span.name.startswith("llm.chat") else _redact(raw_attrs)
                     payload = {
                         "name": span.name,
                         "trace_id": format(span.context.trace_id, "032x") if span.context else None,
                         "span_id": format(span.context.span_id, "016x") if span.context else None,
                         "start_time": span.start_time,
                         "end_time": span.end_time,
-                        "attributes": _redact(dict(span.attributes or {})),
+                        "attributes": attrs,
                     }
                     fh.write(json.dumps(payload) + "\n")
         except OSError:
