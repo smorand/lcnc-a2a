@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import ExecutorContext
+from lcnc_a2a.executors.plan_execute import PlanExecuteExecutor
 from lcnc_a2a.executors.react import ReActExecutor
 from lcnc_a2a.executors.simple import SimpleExecutor
 from lcnc_a2a.llm.provider import LlmProvider, get_provider
 
-Executor = SimpleExecutor | ReActExecutor
+Executor = SimpleExecutor | ReActExecutor | PlanExecuteExecutor
 
 
 def dispatch(
@@ -29,6 +30,9 @@ def dispatch(
     if mode == "react":
         snapshot_provider = provider or get_provider("openrouter")
         return ReActExecutor(db=db, provider=snapshot_provider, crypto=crypto)
+    if mode == "plan_execute":
+        snapshot_provider = provider or get_provider("openrouter")
+        return PlanExecuteExecutor(db=db, provider=snapshot_provider, crypto=crypto)
     raise NotImplementedError(f"mode_not_implemented:{mode}")
 
 

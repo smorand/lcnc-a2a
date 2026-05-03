@@ -36,8 +36,10 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `src/lcnc_a2a/a2a/` - `envelope.py` (SendStreamingMessage / TaskStatusUpdate / TaskArtifactUpdate), `card.py` (Agent Card builder), `sse.py` (SSE encoder)
 - `src/lcnc_a2a/auth/api_key.py` - constant-time bearer key validation (`hmac.compare_digest`)
 - `src/lcnc_a2a/llm/` - `provider.py` (LlmProvider ABC, OpenRouterProvider, OpenAiCompatibleProvider via httpx), `tool_format.py` (MCP → OpenAI tools), `embeddings.py` (FR-019 retry, `resolve_embedding_model`)
-- `src/lcnc_a2a/executors/` - `base.py` (ExecutorContext + `invoke_mcp_tool` + `collect_tools`), `dispatcher.py`, `simple.py` (Simple-mode loop, retries, OTel), `react.py` (ReAct loop, similarity stop, guardrails), `synthesis.py` (force-synthesis helper)
+- `src/lcnc_a2a/executors/` - `base.py` (ExecutorContext + `invoke_mcp_tool` + `collect_tools`), `dispatcher.py`, `simple.py` (Simple-mode loop, retries, OTel), `react.py` (ReAct loop, similarity stop, guardrails), `plan_execute.py` (planner + stage-parallel executor + replan + synthesis), `synthesis.py` (force-synthesis helper)
 - `src/lcnc_a2a/services/similarity.py` - pure-Python `cosine_similarity()`
+- `src/lcnc_a2a/services/plan_validator.py` - PE planner JSON validator (FR-016, FR-020)
+- `src/lcnc_a2a/services/plan_substitution.py` - PE `${step_N.output}` resolver
 - `src/lcnc_a2a/mcp_client/tool_caller.py` - call_tool_stdio / call_tool_http (env scrubbing reused)
 - `src/lcnc_a2a/services/cancellation.py` - in-process `run_id → asyncio.Event` registry
 - `src/lcnc_a2a/services/messages.py` - context get/create + soft 50 / hard 1000 cap, OpenAI payload builder
@@ -55,8 +57,10 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `tests/e2e/_mcp_http_helpers.py` - respx helpers for streamable-HTTP MCP mocking
 - `tests/e2e/_a2a_helpers.py` - StubLlm, seed_started_agent, post_a2a, fetch_run/messages/steps helpers
 - `tests/e2e/_react_helpers.py` - StubEmbedding, make_embedding, add_react_tool_call, add_final_answer, seed_started_react_agent
+- `tests/e2e/_pe_helpers.py` - PE plan/step/synthesis stub builders, `seed_started_pe_agent`, `seed_pe_mcp`
 - `tests/e2e/fixtures/fake_mcp_add.py` - stdio MCP fixture exposing `add`, `flaky`, `noop` tools
-- `tests/e2e/` - acceptance tests for US-001..US-006 (E2E-001..072, 086..102)
+- `tests/e2e/fixtures/fake_mcp_pe.py` - stdio MCP fixture exposing `search`, `get_market_data`, `compute_ratios`, `echo`, `slow` tools (US-007)
+- `tests/e2e/` - acceptance tests for US-001..US-007 (E2E-001..085, 086..102)
 
 ## Conventions
 
@@ -72,7 +76,7 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 
 ## Quality Gate
 
-`make check` must pass before each commit: ruff lint, ruff format-check, mypy strict, pytest (87/87 acceptance tests).
+`make check` must pass before each commit: ruff lint, ruff format-check, mypy strict, pytest (100/100 acceptance tests).
 
 ## Documentation Index
 
@@ -83,3 +87,4 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `.agent_docs/mcp_tools.md` - US-004 MCP discovery (stdio + streamable_http), env scrubbing, transport-change rules
 - `.agent_docs/a2a_executor.md` - US-005 A2A surface, Simple executor, cancellation, OTel redaction
 - `.agent_docs/react_executor.md` - US-006 ReAct loop, similarity stop, guardrails, embedding retry
+- `.agent_docs/plan_execute_executor.md` - US-007 planner + stage-parallel executor + replan + synthesis
