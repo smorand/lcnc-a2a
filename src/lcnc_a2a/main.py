@@ -24,6 +24,7 @@ from lcnc_a2a.routes import agents as agents_routes
 from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
 from lcnc_a2a.routes import mcp as mcp_routes
+from lcnc_a2a.routes import runs as runs_routes
 from lcnc_a2a.services.cancellation import CancellationRegistry
 from lcnc_a2a.settings import Settings
 
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(agents_routes.router)
     app.include_router(dashboard_routes.router)
     app.include_router(mcp_routes.router)
+    app.include_router(runs_routes.router)
     app.include_router(a2a_routes.router)
 
     return app

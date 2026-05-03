@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Runs - {{ agent.name }} - LCNC A2A Builder{% endblock %}
+{% block content %}
+<section class="cds--dashboard">
+  <header class="cds--dashboard__header">
+    <h1 class="cds--type-productive-heading-04">Runs for {{ agent.name }}</h1>
+    <p class="cds--type-body-long-01">
+      <a href="/agents/{{ agent.id }}">Back to agent</a>
+    </p>
+  </header>
+
+  {% if rows %}
+    <table class="cds--data-table runs-table">
+      <thead>
+        <tr>
+          <th>Started</th>
+          <th>Task ID</th>
+          <th>Context ID</th>
+          <th>Status</th>
+          <th>Duration (ms)</th>
+          <th>Loops</th>
+          <th>Tokens in</th>
+          <th>Tokens out</th>
+          <th>Cost (USD)</th>
+          <th>Summary</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          {% include "agents/partials/run_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="cds--empty-state runs-empty">
+      <p>Send a message to /agents/{{ agent.id }} to see runs here.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

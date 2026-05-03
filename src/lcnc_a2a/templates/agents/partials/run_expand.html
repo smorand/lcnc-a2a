@@ -1,0 +1,31 @@
+<div class="run-trace-content" data-run-id="{{ run.id }}">
+  {% if step_rows %}
+    <table class="cds--data-table run-steps-table">
+      <thead>
+        <tr>
+          <th>Seq</th>
+          <th>Role</th>
+          <th>Tool</th>
+          <th>Content</th>
+          <th>Args</th>
+          <th>Result</th>
+          <th>Tokens in</th>
+          <th>Tokens out</th>
+          <th>Similarity</th>
+          <th>Stage</th>
+          <th>Step ID</th>
+          <th>Step status</th>
+          <th>Duration (ms)</th>
+          <th>Occurred</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for srow in step_rows %}
+          {% include "agents/partials/step_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="run-trace-empty">No steps recorded for this run.</p>
+  {% endif %}
+</div>

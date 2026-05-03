@@ -1,0 +1,37 @@
+{% set run = row.run %}
+<tr class="run-row" data-run-id="{{ run.id }}">
+  <td class="run-cell-started">{{ run.started_at.isoformat() }}</td>
+  <td class="run-cell-task-id">{{ run.a2a_task_id or "" }}</td>
+  <td class="run-cell-context-id">{{ run.context_id or "" }}</td>
+  <td class="run-cell-status">{{ run.status }}</td>
+  <td class="run-cell-duration">{% if run.duration_ms is not none %}{{ run.duration_ms }}{% else %}n/a{% endif %}</td>
+  <td class="run-cell-loops">{% if run.loops is not none %}{{ run.loops }}{% else %}n/a{% endif %}</td>
+  <td class="run-cell-tokens-in">{% if run.tokens_in is not none %}{{ run.tokens_in }}{% else %}0{% endif %}</td>
+  <td class="run-cell-tokens-out">{% if run.tokens_out is not none %}{{ run.tokens_out }}{% else %}0{% endif %}</td>
+  <td class="run-cell-cost">
+    {%- if run.cost_usd is none -%}
+      n/a
+    {%- else -%}
+      ${{ "%.6f"|format(run.cost_usd) }}
+    {%- endif -%}
+  </td>
+  <td class="run-cell-summary">
+    {%- if row.summary -%}
+      {{ row.summary }}{% if row.summary_truncated %}…{% endif %}
+    {%- endif -%}
+  </td>
+  <td class="run-cell-actions">
+    <button
+      type="button"
+      class="cds--btn cds--btn--ghost run-expand-btn"
+      hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}"
+      hx-target="#run-{{ run.id }}-trace"
+      hx-swap="innerHTML"
+    >Expand</button>
+  </td>
+</tr>
+<tr class="run-trace-row">
+  <td colspan="11">
+    <div id="run-{{ run.id }}-trace" class="run-trace"></div>
+  </td>
+</tr>
