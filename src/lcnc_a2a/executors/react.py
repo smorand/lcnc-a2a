@@ -247,7 +247,7 @@ class ReActExecutor:
                     if not final_text.strip():
                         # The LLM said "Final Answer:" without an answer. Fail
                         # explicitly instead of completing with empty content.
-                        failure_reason = empty_response_failure_reason(response) or "empty_response"
+                        failure_reason: str | None = empty_response_failure_reason(response) or "empty_response"
                         logger.warning(
                             "ReAct final outcome had empty text (run=%s "
                             "finish_reason=%s tokens_out=%d reasoning_chars=%d "
