@@ -37,6 +37,13 @@ from lcnc_a2a.services.mcp_discovery import (
 router = APIRouter()
 
 
+def _form_template(request: Request) -> str:
+    """Pick partial (HTMX) vs full-page (direct nav) for the MCP form."""
+    if request.headers.get("HX-Request") == "true":
+        return "agents/partials/mcp_form.html"
+    return "agents/mcp_form_page.html"
+
+
 def _list_entries(servers: list[AgentMcpServer], /) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for row in servers:
@@ -85,7 +92,7 @@ async def new_mcp_form(
         return Response(content="not_found", status_code=404)
     return templates.TemplateResponse(
         request,
-        "agents/partials/mcp_form.html",
+        _form_template(request),
         {
             "agent": agent,
             "row": None,
@@ -156,7 +163,7 @@ async def create_mcp_server(
 
     return templates.TemplateResponse(
         request,
-        "agents/partials/mcp_form.html",
+        _form_template(request),
         {
             "agent": agent,
             "row": row,
@@ -191,7 +198,7 @@ async def view_mcp_server(
         return Response(content="not_found", status_code=404)
     return templates.TemplateResponse(
         request,
-        "agents/partials/mcp_form.html",
+        _form_template(request),
         {
             "agent": agent,
             "row": row,
@@ -404,7 +411,7 @@ def _render_form_error(
 ) -> Response:
     return templates.TemplateResponse(
         request,
-        "agents/partials/mcp_form.html",
+        _form_template(request),
         {
             "agent": agent,
             "row": row,

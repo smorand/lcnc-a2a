@@ -24,6 +24,14 @@
       </tbody>
     </table>
   {% else %}
-    <p class="app-page-title__subtitle"><em>No MCP servers attached.</em></p>
+    <div class="empty-state">
+      <p><em>No MCP servers attached yet.</em></p>
+      <p class="form-row__hint">
+        Attach an MCP server to give the agent tools (filesystem, git, web
+        search, ...). The agent works without any if you only need plain
+        chat.
+      </p>
+      <a class="btn btn--primary btn--sm" href="/agents/{{ agent.id }}/mcp/new">+ Add MCP server</a>
+    </div>
   {% endif %}
 </section>

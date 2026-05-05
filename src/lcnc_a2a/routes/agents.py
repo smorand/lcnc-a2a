@@ -27,6 +27,7 @@ from lcnc_a2a.services.agents import (
     update_agent,
 )
 from lcnc_a2a.services.api_keys import create_agent_api_key
+from lcnc_a2a.services.mcp_discovery import list_servers_for_agent
 from lcnc_a2a.services.runs import list_running_run_ids_for_agent
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
@@ -215,6 +216,13 @@ async def agent_detail(
     cookie_name = f"{ONE_TIME_KEY_COOKIE_PREFIX}{agent.id}"
     one_time_key = request.cookies.get(cookie_name)
 
+    mcp_rows = await list_servers_for_agent(db, agent_id=agent.id)
+    mcp_servers: list[dict[str, object]] = []
+    for row in mcp_rows:
+        cache = row.tools_cache or {}
+        tools = cache.get("tools") if isinstance(cache, dict) else None
+        mcp_servers.append({"row": row, "tool_count": len(tools) if isinstance(tools, list) else 0})
+
     preset = _infer_model_preset(agent.model_provider, agent.model_endpoint)
     response: Response = templates.TemplateResponse(
         request,
@@ -226,6 +234,7 @@ async def agent_detail(
             "one_time_key": one_time_key,
             "csrf_token": csrf.generate(),
             "model_preset_label": _PRESET_LABELS.get(preset, preset),
+            "mcp_servers": mcp_servers,
         },
     )
     if one_time_key is not None:

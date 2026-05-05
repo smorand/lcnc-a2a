@@ -514,10 +514,9 @@ tr.run-trace-row td { background: var(--color-bg); padding: 0; }
   font-style: normal;
   font-weight: 400;
   letter-spacing: normal;
-  text-transform: none;
+  text-transform: none !important;
   white-space: pre-line;
   line-height: 1.4;
-  white-space: pre-line;
   box-shadow: var(--shadow-md);
   pointer-events: none;
 }

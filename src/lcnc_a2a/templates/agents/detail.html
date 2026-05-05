@@ -93,6 +93,10 @@
     </dl>
   </div>
 
+  {% with servers=mcp_servers %}
+    {% include "agents/partials/mcp_list.html" %}
+  {% endwith %}
+
   <div class="card">
     <div class="card__header"><h2 class="card__title">API keys</h2></div>
     {% if keys %}
