@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,9 +23,13 @@ from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
 from lcnc_a2a.routes import mcp as mcp_routes
 from lcnc_a2a.routes import runs as runs_routes
+from lcnc_a2a.services import runs as runs_service
 from lcnc_a2a.services.app_secrets import bootstrap_secrets
 from lcnc_a2a.services.cancellation import CancellationRegistry
 from lcnc_a2a.settings import Settings
+
+logger = logging.getLogger(__name__)
+ABANDONED_RUN_THRESHOLD = timedelta(hours=1)
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 STATIC_DIR = PACKAGE_ROOT / "static"
@@ -53,6 +59,17 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Reap runs left ``running`` / ``paused`` from a previous process
+        # that crashed or was killed mid-stream. Without this the dashboard
+        # and ``GET /tasks/{id}`` would lie about the run state.
+        try:
+            async for session in db.session():
+                reaped = await runs_service.reap_abandoned_runs(session, older_than=ABANDONED_RUN_THRESHOLD)
+                break
+            if reaped:
+                logger.warning("reaped %d abandoned run(s) at startup", reaped)
+        except Exception:
+            logger.exception("failed to reap abandoned runs at startup")
         yield
         await db.close()
 

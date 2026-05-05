@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import sys
 import time
 from collections.abc import AsyncIterator
 from decimal import Decimal
@@ -62,6 +64,13 @@ class SimpleExecutor:
         cancel_event = ctx.cancellation
         emitter = ctx.emitter
         is_resume = ctx.resume_action is not None
+        # Tracked so the ``finally`` block knows whether to write a terminal
+        # row when we exit through an unhandled CancelledError or exception.
+        finalized = False
+        total_tokens_in = 0
+        total_tokens_out = 0
+        total_cost: Decimal | None = None
+        loops = 0
 
         if not is_resume:
             # Fresh run: persist the user's message (may raise context_full).
@@ -84,6 +93,7 @@ class SimpleExecutor:
                     cost_usd=None,
                     loops=0,
                 )
+                finalized = True
                 await self._db.commit()
                 yield emitter.working()
                 yield emitter.failed(reason="context_full")
@@ -107,10 +117,6 @@ class SimpleExecutor:
         tool_lookup = {tool["descriptor"]["name"]: tool for tool in tools}
 
         run_seq = 0
-        loops = 0
-        total_tokens_in = 0
-        total_tokens_out = 0
-        total_cost: Decimal | None = None
         tracer = get_tracer()
 
         if is_resume:
@@ -170,6 +176,7 @@ class SimpleExecutor:
                         cost_usd=total_cost,
                         loops=loops,
                     )
+                    finalized = True
                     await self._db.commit()
                     yield emitter.failed(reason="guardrail_exceeded")
                     return
@@ -212,6 +219,7 @@ class SimpleExecutor:
                             cost_usd=total_cost,
                             loops=loops,
                         )
+                        finalized = True
                         await self._db.commit()
                         yield emitter.failed(reason="llm_provider_error")
                         return
@@ -256,6 +264,7 @@ class SimpleExecutor:
                             cost_usd=total_cost,
                             loops=loops,
                         )
+                        finalized = True
                         await self._db.commit()
                         yield emitter.failed(reason=failure_reason)
                         return
@@ -289,6 +298,7 @@ class SimpleExecutor:
                         cost_usd=total_cost,
                         loops=loops,
                     )
+                    finalized = True
                     await self._db.commit()
                     yield emitter.artifact(final_text)
                     yield emitter.completed()
@@ -334,6 +344,9 @@ class SimpleExecutor:
                         run_id=ctx.run.id,
                         pending_action=pending,
                     )
+                    # Pause is a terminal state for this execution path; the
+                    # next resume call will move it back to ``running``.
+                    finalized = True
                     await self._db.commit()
                     yield emitter.input_required(
                         f"The agent wants to call '{name}' with arguments {args}. "
@@ -385,26 +398,30 @@ class SimpleExecutor:
                         cost_usd=total_cost,
                         loops=loops,
                     )
+                    finalized = True
                     await self._db.commit()
                     yield emitter.failed(reason="max_tokens")
                     return
         finally:
-            if cancelled:
-                await runs_service.finalize_run(
-                    self._db,
-                    run_id=ctx.run.id,
-                    status="cancelled",
-                    stop_reason="cancelled",
-                    final_answer=None,
-                    tokens_in=total_tokens_in,
-                    tokens_out=total_tokens_out,
-                    cost_usd=total_cost,
-                    loops=loops,
-                )
-                try:
-                    await self._db.commit()
-                except Exception:
-                    await self._db.rollback()
+            # Last-resort finalize: covers client disconnect (CancelledError /
+            # GeneratorExit) and unexpected exceptions. Inline finalize paths
+            # already set ``finalized=True``; here we close the gap so a run
+            # never stays ``running`` forever in the DB.
+            if not finalized:
+                exc_type = sys.exc_info()[0]
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(
+                        runs_service.finalize_orphan_run(
+                            self._db,
+                            run_id=ctx.run.id,
+                            cancel_event_set=cancel_event.is_set(),
+                            exc_type=exc_type,
+                            tokens_in=total_tokens_in,
+                            tokens_out=total_tokens_out,
+                            cost_usd=total_cost,
+                            loops=loops,
+                        )
+                    )
 
         if cancelled:
             yield emitter.canceled()

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcnc_a2a.models.agent import Agent
@@ -180,3 +182,86 @@ async def resume_run(
     run.stop_reason = None
     run.pending_action = None
     await db.flush()
+
+
+async def finalize_orphan_run(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    cancel_event_set: bool,
+    exc_type: type[BaseException] | None,
+    tokens_in: int,
+    tokens_out: int,
+    cost_usd: Decimal | None,
+    loops: int,
+) -> None:
+    """Finalize a run that exited without going through one of the inline
+    ``finalize_run`` paths.
+
+    Called from the executor's ``finally`` block when the ``finalized`` flag
+    was never set; covers client disconnects (``CancelledError`` /
+    ``GeneratorExit``) and unexpected exceptions. Without this, the run row
+    stays ``running`` forever and ``GET /tasks/{id}`` lies to the caller.
+
+    The cause-of-exit triage:
+      - ``cancel_event_set``: explicit cancel (DELETE / Stop) → ``cancelled`` /
+        ``cancelled``.
+      - asyncio cancellation or generator close → ``cancelled`` /
+        ``client_disconnected``.
+      - any other exception → ``failed`` / ``internal_error``.
+    """
+    if cancel_event_set:
+        status, reason = "cancelled", "cancelled"
+    elif exc_type is None or issubclass(exc_type, (GeneratorExit, asyncio.CancelledError)):
+        status, reason = "cancelled", "client_disconnected"
+    else:
+        status, reason = "failed", "internal_error"
+    try:
+        await finalize_run(
+            db,
+            run_id=run_id,
+            status=status,
+            stop_reason=reason,
+            final_answer=None,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost_usd,
+            loops=loops,
+        )
+        await db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            await db.rollback()
+
+
+async def reap_abandoned_runs(
+    db: AsyncSession,
+    *,
+    older_than: timedelta = timedelta(hours=1),
+) -> int:
+    """Mark stale ``running``/``paused`` runs as failed at startup.
+
+    A run can be left dangling if the process crashed or the SSE stream was
+    closed before the executor's cleanup ran. Called from the app lifespan
+    so a freshly booted server never serves stale ``WORKING`` task states.
+
+    Returns the number of rows updated.
+    """
+    cutoff = datetime.now(UTC) - older_than
+    completed = datetime.now(UTC)
+    result = await db.execute(
+        update(AgentRun)
+        .where(
+            AgentRun.status.in_(["running", "paused"]),
+            AgentRun.started_at < cutoff,
+        )
+        .values(
+            status="failed",
+            stop_reason="abandoned",
+            completed_at=completed,
+        )
+        .returning(AgentRun.id)
+    )
+    rows = result.fetchall()
+    await db.commit()
+    return len(rows)

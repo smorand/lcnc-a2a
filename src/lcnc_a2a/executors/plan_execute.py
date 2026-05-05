@@ -6,8 +6,10 @@ See ``specs/user_stories/US-007_plan_execute_executor.md`` for the contract.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import sys
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -82,455 +84,489 @@ class PlanExecuteExecutor:
         cancel_event = ctx.cancellation
         cancelled = False
         emitter = ctx.emitter
-
-        try:
-            await messages_service.append_message(
-                self._db,
-                context_id=ctx.context_id,
-                role="user",
-                content=ctx.user_text,
-            )
-        except messages_service.ContextFullError:
-            await runs_service.finalize_run(
-                self._db,
-                run_id=ctx.run.id,
-                status="failed",
-                stop_reason="context_full",
-                final_answer=None,
-                tokens_in=0,
-                tokens_out=0,
-                cost_usd=None,
-                loops=0,
-            )
-            await self._db.commit()
-            yield emitter.working()
-            yield emitter.failed(reason="context_full")
-            return
-        await self._db.commit()
-
-        yield emitter.working()
-
-        snapshot = ctx.run.config_snapshot if isinstance(ctx.run.config_snapshot, dict) else {}
-        planner_prompt = snapshot.get("planner_prompt") or ctx.agent.planner_prompt or ""
-        executor_prompt = snapshot.get("executor_prompt") or ctx.agent.executor_prompt or ""
-        max_steps = int(snapshot.get("max_steps") or ctx.agent.max_steps or DEFAULT_MAX_STEPS)
-        max_tokens = int(snapshot.get("max_tokens") or ctx.agent.max_tokens)
-        model_id = snapshot.get("model_id") or ctx.agent.model_id
-        model_endpoint = snapshot.get("model_endpoint") or ctx.agent.model_endpoint
-
-        tools = collect_tools(ctx.mcp_servers)
-        tool_lookup = {t["descriptor"]["name"]: t for t in tools}
-        available_tools = set(tool_lookup.keys())
-
-        tracer = get_tracer()
-        run_seq = 0
-        loops = 0  # PE loops field is reserved for synthesis defensive cap (0 or 1).
+        # See SimpleExecutor / ReActExecutor: tracks whether the run was
+        # explicitly finalized so the outer ``finally`` can cover orphan
+        # exits (CancelledError, exception).
+        finalized = False
         total_tokens_in = 0
         total_tokens_out = 0
         total_cost: Decimal | None = None
-
-        # Track step outcomes across replans.
-        step_outputs: dict[int, str] = {}
-        completed_step_ids: set[int] = set()
-
-        # SSE: planning phase.
-        yield emitter.working(metadata={"phase": "planning"})
-
-        # ---- Initial planner call (with one validation retry) ----
-        try:
-            initial_plan, initial_plan_payload, planner_tokens = await self._call_planner(
-                ctx=ctx,
-                planner_prompt=planner_prompt,
-                max_steps=max_steps,
-                max_tokens=max_tokens,
-                available_tools=available_tools,
-                model_id=model_id or "",
-                model_endpoint=model_endpoint or "",
-                completed_outputs={},
-                replan_reason=None,
-                tracer=tracer,
-            )
-        except _PlannerFailed as exc:
-            total_tokens_in += exc.tokens_in
-            total_tokens_out += exc.tokens_out
-            if exc.cost_usd is not None:
-                total_cost = (total_cost or Decimal("0")) + exc.cost_usd
-            await runs_service.finalize_run(
-                self._db,
-                run_id=ctx.run.id,
-                status="failed",
-                stop_reason=exc.stop_reason,
-                final_answer=None,
-                tokens_in=total_tokens_in,
-                tokens_out=total_tokens_out,
-                cost_usd=total_cost,
-                loops=loops,
-            )
-            await self._db.commit()
-            yield emitter.failed(reason=exc.stop_reason)
-            return
-
-        total_tokens_in += planner_tokens.tokens_in
-        total_tokens_out += planner_tokens.tokens_out
-        if planner_tokens.cost_usd is not None:
-            total_cost = (total_cost or Decimal("0")) + planner_tokens.cost_usd
-
-        # Persist initial plan and stamp it onto the run row.
-        run_seq += 1
-        await runs_service.append_run_step(
-            self._db,
-            run_id=ctx.run.id,
-            seq=run_seq,
-            role="plan",
-            content=initial_plan.goal,
-            tool_args_json=initial_plan_payload,
-            tokens_in=planner_tokens.tokens_in,
-            tokens_out=planner_tokens.tokens_out,
-        )
-        ctx.run.plan = initial_plan_payload
-        await self._db.flush()
-        await self._db.commit()
-
-        plan: Plan = initial_plan
-        replan_count = 0
-
-        max_tokens_reached = False
-        step_failed = False
+        loops = 0
 
         try:
-            while True:
-                if cancel_event.is_set():
-                    cancelled = True
-                    break
-
-                remaining = [s for s in plan.steps if s.id not in completed_step_ids]
-                if not remaining:
-                    break
-
-                stage_groups = _group_by_stage(remaining)
-                triggered_replan = False
-                replan_reason = ""
-
-                for stage_num, stage_steps in stage_groups:
-                    if cancel_event.is_set():
-                        cancelled = True
-                        break
-
-                    yield emitter.working(
-                        metadata={
-                            "phase": "executing",
-                            "stage": stage_num,
-                            "steps": [s.id for s in stage_steps],
-                        },
-                    )
-
-                    coros = [
-                        self._run_step(
-                            ctx,
-                            step,
-                            step_outputs,
-                            tool_lookup,
-                            executor_prompt,
-                            model_id or "",
-                            model_endpoint or "",
-                            max_tokens,
-                            tracer,
-                        )
-                        for step in stage_steps
-                    ]
-                    outcomes = await asyncio.gather(*coros, return_exceptions=False)
-
-                    # Persist results (sequentially in step.id order for stability).
-                    sorted_outcomes = sorted(outcomes, key=lambda o: o.step.id)
-                    for outcome in sorted_outcomes:
-                        total_tokens_in += outcome.tokens_in
-                        total_tokens_out += outcome.tokens_out
-                        if outcome.cost_usd is not None:
-                            total_cost = (total_cost or Decimal("0")) + outcome.cost_usd
-                        run_seq += 1
-                        await runs_service.append_run_step(
-                            self._db,
-                            run_id=ctx.run.id,
-                            seq=run_seq,
-                            role="step_result",
-                            content=outcome.output,
-                            tool_name=outcome.step.tool,
-                            tool_args_json=outcome.tool_args,
-                            tool_result_json=outcome.tool_result,
-                            tokens_in=outcome.tokens_in,
-                            tokens_out=outcome.tokens_out,
-                        )
-                        await self._db.execute(
-                            sql_update(AgentRunStep)
-                            .where(AgentRunStep.run_id == ctx.run.id, AgentRunStep.seq == run_seq)
-                            .values(
-                                stage=outcome.step.stage,
-                                step_id=outcome.step.id,
-                                step_status=outcome.status,
-                            )
-                        )
-                    await self._db.commit()
-
-                    # Check stage-level outcomes.
-                    failure = next((o for o in sorted_outcomes if o.status == "failure"), None)
-                    if failure is not None:
-                        step_failed = True
-                        break
-
-                    replan_request = next((o for o in sorted_outcomes if o.status == "replan_requested"), None)
-                    if replan_request is not None:
-                        # Mark sibling success steps as completed so they survive the replan.
-                        for o in sorted_outcomes:
-                            if o.status == "success":
-                                completed_step_ids.add(o.step.id)
-                                step_outputs[o.step.id] = o.output
-                        triggered_replan = True
-                        replan_reason = replan_request.reason or "replan_requested"
-                        break
-
-                    # All success — propagate outputs.
-                    for o in sorted_outcomes:
-                        completed_step_ids.add(o.step.id)
-                        step_outputs[o.step.id] = o.output
-
-                    if total_tokens_out >= max_tokens:
-                        max_tokens_reached = True
-                        break
-
-                if cancelled or step_failed or max_tokens_reached:
-                    break
-
-                if triggered_replan:
-                    if replan_count >= MAX_REPLANS:
-                        await runs_service.finalize_run(
-                            self._db,
-                            run_id=ctx.run.id,
-                            status="failed",
-                            stop_reason="replan_exceeded",
-                            final_answer=None,
-                            tokens_in=total_tokens_in,
-                            tokens_out=total_tokens_out,
-                            cost_usd=total_cost,
-                            loops=loops,
-                        )
-                        await self._db.commit()
-                        yield emitter.failed(reason="replan_exceeded")
-                        return
-
-                    replan_count += 1
-                    yield emitter.working(metadata={"phase": "planning"})
-                    try:
-                        new_plan, new_plan_payload, planner_tokens = await self._call_planner(
-                            ctx=ctx,
-                            planner_prompt=planner_prompt,
-                            max_steps=max_steps,
-                            max_tokens=max_tokens,
-                            available_tools=available_tools,
-                            model_id=model_id or "",
-                            model_endpoint=model_endpoint or "",
-                            completed_outputs=dict(step_outputs),
-                            replan_reason=replan_reason,
-                            tracer=tracer,
-                        )
-                    except _PlannerFailed as exc:
-                        total_tokens_in += exc.tokens_in
-                        total_tokens_out += exc.tokens_out
-                        if exc.cost_usd is not None:
-                            total_cost = (total_cost or Decimal("0")) + exc.cost_usd
-                        await runs_service.finalize_run(
-                            self._db,
-                            run_id=ctx.run.id,
-                            status="failed",
-                            stop_reason=exc.stop_reason,
-                            final_answer=None,
-                            tokens_in=total_tokens_in,
-                            tokens_out=total_tokens_out,
-                            cost_usd=total_cost,
-                            loops=loops,
-                        )
-                        await self._db.commit()
-                        yield emitter.failed(reason=exc.stop_reason)
-                        return
-
-                    total_tokens_in += planner_tokens.tokens_in
-                    total_tokens_out += planner_tokens.tokens_out
-                    if planner_tokens.cost_usd is not None:
-                        total_cost = (total_cost or Decimal("0")) + planner_tokens.cost_usd
-
-                    run_seq += 1
-                    await runs_service.append_run_step(
-                        self._db,
-                        run_id=ctx.run.id,
-                        seq=run_seq,
-                        role="plan",
-                        content=new_plan.goal,
-                        tool_args_json=new_plan_payload,
-                        tokens_in=planner_tokens.tokens_in,
-                        tokens_out=planner_tokens.tokens_out,
-                    )
-                    await self._db.commit()
-                    plan = new_plan
-                    continue
-
-                # No replan, no failure, no max-tokens → all stages done.
-                break
-        finally:
-            if cancelled:
+            try:
+                await messages_service.append_message(
+                    self._db,
+                    context_id=ctx.context_id,
+                    role="user",
+                    content=ctx.user_text,
+                )
+            except messages_service.ContextFullError:
                 await runs_service.finalize_run(
                     self._db,
                     run_id=ctx.run.id,
-                    status="cancelled",
-                    stop_reason="cancelled",
+                    status="failed",
+                    stop_reason="context_full",
+                    final_answer=None,
+                    tokens_in=0,
+                    tokens_out=0,
+                    cost_usd=None,
+                    loops=0,
+                )
+                finalized = True
+                await self._db.commit()
+                yield emitter.working()
+                yield emitter.failed(reason="context_full")
+                return
+            await self._db.commit()
+
+            yield emitter.working()
+
+            snapshot = ctx.run.config_snapshot if isinstance(ctx.run.config_snapshot, dict) else {}
+            planner_prompt = snapshot.get("planner_prompt") or ctx.agent.planner_prompt or ""
+            executor_prompt = snapshot.get("executor_prompt") or ctx.agent.executor_prompt or ""
+            max_steps = int(snapshot.get("max_steps") or ctx.agent.max_steps or DEFAULT_MAX_STEPS)
+            max_tokens = int(snapshot.get("max_tokens") or ctx.agent.max_tokens)
+            model_id = snapshot.get("model_id") or ctx.agent.model_id
+            model_endpoint = snapshot.get("model_endpoint") or ctx.agent.model_endpoint
+
+            tools = collect_tools(ctx.mcp_servers)
+            tool_lookup = {t["descriptor"]["name"]: t for t in tools}
+            available_tools = set(tool_lookup.keys())
+
+            tracer = get_tracer()
+            run_seq = 0
+            # PE loops field is reserved for synthesis defensive cap (0 or 1).
+
+            # Track step outcomes across replans.
+            step_outputs: dict[int, str] = {}
+            completed_step_ids: set[int] = set()
+
+            # SSE: planning phase.
+            yield emitter.working(metadata={"phase": "planning"})
+
+            # ---- Initial planner call (with one validation retry) ----
+            try:
+                initial_plan, initial_plan_payload, planner_tokens = await self._call_planner(
+                    ctx=ctx,
+                    planner_prompt=planner_prompt,
+                    max_steps=max_steps,
+                    max_tokens=max_tokens,
+                    available_tools=available_tools,
+                    model_id=model_id or "",
+                    model_endpoint=model_endpoint or "",
+                    completed_outputs={},
+                    replan_reason=None,
+                    tracer=tracer,
+                )
+            except _PlannerFailed as exc:
+                total_tokens_in += exc.tokens_in
+                total_tokens_out += exc.tokens_out
+                if exc.cost_usd is not None:
+                    total_cost = (total_cost or Decimal("0")) + exc.cost_usd
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason=exc.stop_reason,
                     final_answer=None,
                     tokens_in=total_tokens_in,
                     tokens_out=total_tokens_out,
                     cost_usd=total_cost,
                     loops=loops,
                 )
-                try:
-                    await self._db.commit()
-                except Exception:
-                    await self._db.rollback()
+                finalized = True
+                await self._db.commit()
+                yield emitter.failed(reason=exc.stop_reason)
+                return
 
-        if cancelled:
-            yield emitter.canceled()
-            return
+            total_tokens_in += planner_tokens.tokens_in
+            total_tokens_out += planner_tokens.tokens_out
+            if planner_tokens.cost_usd is not None:
+                total_cost = (total_cost or Decimal("0")) + planner_tokens.cost_usd
 
-        if step_failed:
-            await runs_service.finalize_run(
+            # Persist initial plan and stamp it onto the run row.
+            run_seq += 1
+            await runs_service.append_run_step(
                 self._db,
                 run_id=ctx.run.id,
-                status="failed",
-                stop_reason="step_failed",
-                final_answer=None,
-                tokens_in=total_tokens_in,
-                tokens_out=total_tokens_out,
-                cost_usd=total_cost,
-                loops=loops,
+                seq=run_seq,
+                role="plan",
+                content=initial_plan.goal,
+                tool_args_json=initial_plan_payload,
+                tokens_in=planner_tokens.tokens_in,
+                tokens_out=planner_tokens.tokens_out,
             )
+            ctx.run.plan = initial_plan_payload
+            await self._db.flush()
             await self._db.commit()
-            yield emitter.failed(reason="step_failed")
-            return
 
-        # ---- Synthesis ----
-        scratchpad_text = _format_step_outputs(step_outputs)
-        if should_skip_synthesis(
-            cumulative_tokens=total_tokens_out,
-            max_tokens=max_tokens,
-            scratchpad_chars=len(scratchpad_text),
-        ):
-            await runs_service.finalize_run(
-                self._db,
-                run_id=ctx.run.id,
-                status="failed",
-                stop_reason="guardrail_exceeded_no_synthesis",
-                final_answer=None,
-                tokens_in=total_tokens_in,
-                tokens_out=total_tokens_out,
-                cost_usd=total_cost,
-                loops=loops,
-            )
-            await self._db.commit()
-            yield emitter.failed(reason="guardrail_exceeded_no_synthesis")
-            return
+            plan: Plan = initial_plan
+            replan_count = 0
 
-        yield emitter.working(metadata={"phase": "synthesizing"})
-        try:
-            synth_response = await self._call_synthesis(
-                user_text=ctx.user_text,
-                scratchpad_text=scratchpad_text,
-                model_id=model_id or "",
-                endpoint=model_endpoint or "",
-                api_key=ctx.provider_api_key,
+            max_tokens_reached = False
+            step_failed = False
+
+            try:
+                while True:
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+
+                    remaining = [s for s in plan.steps if s.id not in completed_step_ids]
+                    if not remaining:
+                        break
+
+                    stage_groups = _group_by_stage(remaining)
+                    triggered_replan = False
+                    replan_reason = ""
+
+                    for stage_num, stage_steps in stage_groups:
+                        if cancel_event.is_set():
+                            cancelled = True
+                            break
+
+                        yield emitter.working(
+                            metadata={
+                                "phase": "executing",
+                                "stage": stage_num,
+                                "steps": [s.id for s in stage_steps],
+                            },
+                        )
+
+                        coros = [
+                            self._run_step(
+                                ctx,
+                                step,
+                                step_outputs,
+                                tool_lookup,
+                                executor_prompt,
+                                model_id or "",
+                                model_endpoint or "",
+                                max_tokens,
+                                tracer,
+                            )
+                            for step in stage_steps
+                        ]
+                        outcomes = await asyncio.gather(*coros, return_exceptions=False)
+
+                        # Persist results (sequentially in step.id order for stability).
+                        sorted_outcomes = sorted(outcomes, key=lambda o: o.step.id)
+                        for outcome in sorted_outcomes:
+                            total_tokens_in += outcome.tokens_in
+                            total_tokens_out += outcome.tokens_out
+                            if outcome.cost_usd is not None:
+                                total_cost = (total_cost or Decimal("0")) + outcome.cost_usd
+                            run_seq += 1
+                            await runs_service.append_run_step(
+                                self._db,
+                                run_id=ctx.run.id,
+                                seq=run_seq,
+                                role="step_result",
+                                content=outcome.output,
+                                tool_name=outcome.step.tool,
+                                tool_args_json=outcome.tool_args,
+                                tool_result_json=outcome.tool_result,
+                                tokens_in=outcome.tokens_in,
+                                tokens_out=outcome.tokens_out,
+                            )
+                            await self._db.execute(
+                                sql_update(AgentRunStep)
+                                .where(AgentRunStep.run_id == ctx.run.id, AgentRunStep.seq == run_seq)
+                                .values(
+                                    stage=outcome.step.stage,
+                                    step_id=outcome.step.id,
+                                    step_status=outcome.status,
+                                )
+                            )
+                        await self._db.commit()
+
+                        # Check stage-level outcomes.
+                        failure = next((o for o in sorted_outcomes if o.status == "failure"), None)
+                        if failure is not None:
+                            step_failed = True
+                            break
+
+                        replan_request = next((o for o in sorted_outcomes if o.status == "replan_requested"), None)
+                        if replan_request is not None:
+                            # Mark sibling success steps as completed so they survive the replan.
+                            for o in sorted_outcomes:
+                                if o.status == "success":
+                                    completed_step_ids.add(o.step.id)
+                                    step_outputs[o.step.id] = o.output
+                            triggered_replan = True
+                            replan_reason = replan_request.reason or "replan_requested"
+                            break
+
+                        # All success — propagate outputs.
+                        for o in sorted_outcomes:
+                            completed_step_ids.add(o.step.id)
+                            step_outputs[o.step.id] = o.output
+
+                        if total_tokens_out >= max_tokens:
+                            max_tokens_reached = True
+                            break
+
+                    if cancelled or step_failed or max_tokens_reached:
+                        break
+
+                    if triggered_replan:
+                        if replan_count >= MAX_REPLANS:
+                            await runs_service.finalize_run(
+                                self._db,
+                                run_id=ctx.run.id,
+                                status="failed",
+                                stop_reason="replan_exceeded",
+                                final_answer=None,
+                                tokens_in=total_tokens_in,
+                                tokens_out=total_tokens_out,
+                                cost_usd=total_cost,
+                                loops=loops,
+                            )
+                            finalized = True
+                            await self._db.commit()
+                            yield emitter.failed(reason="replan_exceeded")
+                            return
+
+                        replan_count += 1
+                        yield emitter.working(metadata={"phase": "planning"})
+                        try:
+                            new_plan, new_plan_payload, planner_tokens = await self._call_planner(
+                                ctx=ctx,
+                                planner_prompt=planner_prompt,
+                                max_steps=max_steps,
+                                max_tokens=max_tokens,
+                                available_tools=available_tools,
+                                model_id=model_id or "",
+                                model_endpoint=model_endpoint or "",
+                                completed_outputs=dict(step_outputs),
+                                replan_reason=replan_reason,
+                                tracer=tracer,
+                            )
+                        except _PlannerFailed as exc:
+                            total_tokens_in += exc.tokens_in
+                            total_tokens_out += exc.tokens_out
+                            if exc.cost_usd is not None:
+                                total_cost = (total_cost or Decimal("0")) + exc.cost_usd
+                            await runs_service.finalize_run(
+                                self._db,
+                                run_id=ctx.run.id,
+                                status="failed",
+                                stop_reason=exc.stop_reason,
+                                final_answer=None,
+                                tokens_in=total_tokens_in,
+                                tokens_out=total_tokens_out,
+                                cost_usd=total_cost,
+                                loops=loops,
+                            )
+                            finalized = True
+                            await self._db.commit()
+                            yield emitter.failed(reason=exc.stop_reason)
+                            return
+
+                        total_tokens_in += planner_tokens.tokens_in
+                        total_tokens_out += planner_tokens.tokens_out
+                        if planner_tokens.cost_usd is not None:
+                            total_cost = (total_cost or Decimal("0")) + planner_tokens.cost_usd
+
+                        run_seq += 1
+                        await runs_service.append_run_step(
+                            self._db,
+                            run_id=ctx.run.id,
+                            seq=run_seq,
+                            role="plan",
+                            content=new_plan.goal,
+                            tool_args_json=new_plan_payload,
+                            tokens_in=planner_tokens.tokens_in,
+                            tokens_out=planner_tokens.tokens_out,
+                        )
+                        await self._db.commit()
+                        plan = new_plan
+                        continue
+
+                    # No replan, no failure, no max-tokens → all stages done.
+                    break
+            finally:
+                # Inner cleanup: emit a CANCELED status row when an explicit
+                # ``cancel_event`` was raised mid-loop. The outer ``finally``
+                # below catches everything else (CancelledError / exception).
+                if cancelled and not finalized:
+                    await runs_service.finalize_run(
+                        self._db,
+                        run_id=ctx.run.id,
+                        status="cancelled",
+                        stop_reason="cancelled",
+                        final_answer=None,
+                        tokens_in=total_tokens_in,
+                        tokens_out=total_tokens_out,
+                        cost_usd=total_cost,
+                        loops=loops,
+                    )
+                    finalized = True
+                    with contextlib.suppress(Exception):
+                        await self._db.commit()
+
+            if cancelled:
+                yield emitter.canceled()
+                return
+
+            if step_failed:
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason="step_failed",
+                    final_answer=None,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
+                finalized = True
+                await self._db.commit()
+                yield emitter.failed(reason="step_failed")
+                return
+
+            # ---- Synthesis ----
+            scratchpad_text = _format_step_outputs(step_outputs)
+            if should_skip_synthesis(
+                cumulative_tokens=total_tokens_out,
                 max_tokens=max_tokens,
-                tracer=tracer,
+                scratchpad_chars=len(scratchpad_text),
+            ):
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason="guardrail_exceeded_no_synthesis",
+                    final_answer=None,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
+                finalized = True
+                await self._db.commit()
+                yield emitter.failed(reason="guardrail_exceeded_no_synthesis")
+                return
+
+            yield emitter.working(metadata={"phase": "synthesizing"})
+            try:
+                synth_response = await self._call_synthesis(
+                    user_text=ctx.user_text,
+                    scratchpad_text=scratchpad_text,
+                    model_id=model_id or "",
+                    endpoint=model_endpoint or "",
+                    api_key=ctx.provider_api_key,
+                    max_tokens=max_tokens,
+                    tracer=tracer,
+                )
+            except LlmProviderError:
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason="llm_provider_error",
+                    final_answer=None,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
+                finalized = True
+                await self._db.commit()
+                yield emitter.failed(reason="llm_provider_error")
+                return
+
+            total_tokens_in += synth_response.tokens_in
+            total_tokens_out += synth_response.tokens_out
+            if synth_response.cost_usd is not None:
+                total_cost = (total_cost or Decimal("0")) + synth_response.cost_usd
+            loops = 1
+
+            # Surface synthesis-time reasoning (FR-023) before the artifact.
+            thought_chunk = reasoning_event(emitter, synth_response)
+            if thought_chunk is not None:
+                yield thought_chunk
+
+            failure_reason = empty_response_failure_reason(synth_response)
+            if failure_reason is not None:
+                logger.warning(
+                    "Plan&Execute synthesis returned empty content (run=%s "
+                    "finish_reason=%s tokens_out=%d reasoning_chars=%d "
+                    "request_id=%s)",
+                    ctx.run.id,
+                    synth_response.finish_reason,
+                    synth_response.tokens_out,
+                    len(synth_response.reasoning),
+                    synth_response.request_id,
+                )
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason=failure_reason,
+                    final_answer=None,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
+                finalized = True
+                await self._db.commit()
+                yield emitter.failed(reason=failure_reason)
+                return
+
+            final_text = synth_response.content or ""
+            run_seq += 1
+            await runs_service.append_run_step(
+                self._db,
+                run_id=ctx.run.id,
+                seq=run_seq,
+                role="synthesis",
+                content=final_text,
+                tokens_in=synth_response.tokens_in,
+                tokens_out=synth_response.tokens_out,
             )
-        except LlmProviderError:
+            await messages_service.append_message(
+                self._db,
+                context_id=ctx.context_id,
+                role="assistant",
+                content=final_text,
+            )
+            stop_reason = "max_tokens" if max_tokens_reached else None
             await runs_service.finalize_run(
                 self._db,
                 run_id=ctx.run.id,
-                status="failed",
-                stop_reason="llm_provider_error",
-                final_answer=None,
+                status="completed",
+                stop_reason=stop_reason,
+                final_answer=final_text,
                 tokens_in=total_tokens_in,
                 tokens_out=total_tokens_out,
                 cost_usd=total_cost,
                 loops=loops,
             )
+            finalized = True
             await self._db.commit()
-            yield emitter.failed(reason="llm_provider_error")
-            return
-
-        total_tokens_in += synth_response.tokens_in
-        total_tokens_out += synth_response.tokens_out
-        if synth_response.cost_usd is not None:
-            total_cost = (total_cost or Decimal("0")) + synth_response.cost_usd
-        loops = 1
-
-        # Surface synthesis-time reasoning (FR-023) before the artifact.
-        thought_chunk = reasoning_event(emitter, synth_response)
-        if thought_chunk is not None:
-            yield thought_chunk
-
-        failure_reason = empty_response_failure_reason(synth_response)
-        if failure_reason is not None:
-            logger.warning(
-                "Plan&Execute synthesis returned empty content (run=%s "
-                "finish_reason=%s tokens_out=%d reasoning_chars=%d "
-                "request_id=%s)",
-                ctx.run.id,
-                synth_response.finish_reason,
-                synth_response.tokens_out,
-                len(synth_response.reasoning),
-                synth_response.request_id,
-            )
-            await runs_service.finalize_run(
-                self._db,
-                run_id=ctx.run.id,
-                status="failed",
-                stop_reason=failure_reason,
-                final_answer=None,
-                tokens_in=total_tokens_in,
-                tokens_out=total_tokens_out,
-                cost_usd=total_cost,
-                loops=loops,
-            )
-            await self._db.commit()
-            yield emitter.failed(reason=failure_reason)
-            return
-
-        final_text = synth_response.content or ""
-        run_seq += 1
-        await runs_service.append_run_step(
-            self._db,
-            run_id=ctx.run.id,
-            seq=run_seq,
-            role="synthesis",
-            content=final_text,
-            tokens_in=synth_response.tokens_in,
-            tokens_out=synth_response.tokens_out,
-        )
-        await messages_service.append_message(
-            self._db,
-            context_id=ctx.context_id,
-            role="assistant",
-            content=final_text,
-        )
-        stop_reason = "max_tokens" if max_tokens_reached else None
-        await runs_service.finalize_run(
-            self._db,
-            run_id=ctx.run.id,
-            status="completed",
-            stop_reason=stop_reason,
-            final_answer=final_text,
-            tokens_in=total_tokens_in,
-            tokens_out=total_tokens_out,
-            cost_usd=total_cost,
-            loops=loops,
-        )
-        await self._db.commit()
-        yield emitter.artifact(final_text)
-        yield emitter.completed()
+            yield emitter.artifact(final_text)
+            yield emitter.completed()
+        finally:
+            # Last-resort finalize: covers client disconnects and exceptions.
+            if not finalized:
+                exc_type = sys.exc_info()[0]
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(
+                        runs_service.finalize_orphan_run(
+                            self._db,
+                            run_id=ctx.run.id,
+                            cancel_event_set=cancel_event.is_set(),
+                            exc_type=exc_type,
+                            tokens_in=total_tokens_in,
+                            tokens_out=total_tokens_out,
+                            cost_usd=total_cost,
+                            loops=loops,
+                        )
+                    )
 
     async def _call_planner(
         self,
