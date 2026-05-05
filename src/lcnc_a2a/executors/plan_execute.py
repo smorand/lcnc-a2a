@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -20,7 +21,9 @@ from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
     collect_tools,
+    empty_response_failure_reason,
     invoke_mcp_tool,
+    reasoning_event,
 )
 from lcnc_a2a.executors.synthesis import (
     SYNTHESIS_TEMPLATE,
@@ -44,6 +47,8 @@ MAX_REPLANS = 3
 MAX_PLANNER_RETRIES = 1  # one retry after a validation error before failing the run
 
 SYNTHESIZE_TOOL = "synthesize"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,6 +466,38 @@ class PlanExecuteExecutor:
         if synth_response.cost_usd is not None:
             total_cost = (total_cost or Decimal("0")) + synth_response.cost_usd
         loops = 1
+
+        # Surface synthesis-time reasoning (FR-023) before the artifact.
+        thought_chunk = reasoning_event(emitter, synth_response)
+        if thought_chunk is not None:
+            yield thought_chunk
+
+        failure_reason = empty_response_failure_reason(synth_response)
+        if failure_reason is not None:
+            logger.warning(
+                "Plan&Execute synthesis returned empty content (run=%s "
+                "finish_reason=%s tokens_out=%d reasoning_chars=%d "
+                "request_id=%s)",
+                ctx.run.id,
+                synth_response.finish_reason,
+                synth_response.tokens_out,
+                len(synth_response.reasoning),
+                synth_response.request_id,
+            )
+            await runs_service.finalize_run(
+                self._db,
+                run_id=ctx.run.id,
+                status="failed",
+                stop_reason=failure_reason,
+                final_answer=None,
+                tokens_in=total_tokens_in,
+                tokens_out=total_tokens_out,
+                cost_usd=total_cost,
+                loops=loops,
+            )
+            await self._db.commit()
+            yield emitter.failed(reason=failure_reason)
+            return
 
         final_text = synth_response.content or ""
         run_seq += 1

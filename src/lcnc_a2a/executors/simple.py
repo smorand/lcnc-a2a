@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 from decimal import Decimal
@@ -11,7 +12,13 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcnc_a2a.crypto import CryptoService
-from lcnc_a2a.executors.base import ExecutorContext, needs_confirmation, parse_tool_arguments
+from lcnc_a2a.executors.base import (
+    ExecutorContext,
+    empty_response_failure_reason,
+    needs_confirmation,
+    parse_tool_arguments,
+    reasoning_event,
+)
 from lcnc_a2a.llm.provider import ChatResponse, LlmProvider, LlmProviderError
 from lcnc_a2a.llm.tool_format import to_openai_tools
 from lcnc_a2a.mcp_client.tool_caller import McpToolError, call_tool_http, call_tool_stdio
@@ -23,6 +30,8 @@ from lcnc_a2a.services.mcp_discovery import decrypt_env, decrypt_headers
 MAX_ITERATIONS = 50
 TOOL_RETRY_BACKOFFS = (0.2, 0.6, 1.8)
 _APPROVAL_TOKENS = frozenset({"yes", "y", "ok", "oui", "o", "approve", "approved", "confirm"})
+
+logger = logging.getLogger(__name__)
 
 
 def _is_approval(text: str) -> bool:
@@ -217,6 +226,40 @@ class SimpleExecutor:
                     total_cost = (total_cost or Decimal("0")) + response.cost_usd
 
                 if not response.tool_calls:
+                    # Surface the LLM's internal reasoning (if any) as a
+                    # WORKING event tagged kind=thought (web-a2a FR-023).
+                    thought_chunk = reasoning_event(emitter, response)
+                    if thought_chunk is not None:
+                        yield thought_chunk
+
+                    # If the LLM returned no usable answer, fail explicitly
+                    # rather than completing with an empty artifact.
+                    failure_reason = empty_response_failure_reason(response)
+                    if failure_reason is not None:
+                        logger.warning(
+                            "LLM returned empty content (run=%s finish_reason=%s "
+                            "tokens_out=%d reasoning_chars=%d request_id=%s)",
+                            ctx.run.id,
+                            response.finish_reason,
+                            response.tokens_out,
+                            len(response.reasoning),
+                            response.request_id,
+                        )
+                        await runs_service.finalize_run(
+                            self._db,
+                            run_id=ctx.run.id,
+                            status="failed",
+                            stop_reason=failure_reason,
+                            final_answer=None,
+                            tokens_in=total_tokens_in,
+                            tokens_out=total_tokens_out,
+                            cost_usd=total_cost,
+                            loops=loops,
+                        )
+                        await self._db.commit()
+                        yield emitter.failed(reason=failure_reason)
+                        return
+
                     final_text = response.content or ""
                     run_seq += 1
                     await runs_service.append_run_step(

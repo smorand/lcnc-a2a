@@ -19,7 +19,17 @@ class LlmProviderError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ChatResponse:
-    """A single ``chat.completions`` response."""
+    """A single ``chat.completions`` response.
+
+    ``reasoning`` carries the model's internal reasoning when exposed by the
+    provider. Populated from ``message.reasoning_content`` (OpenAI/vllm
+    reasoning models) or ``message.reasoning`` (mlx_lm.server). Empty string
+    when the model does not expose it.
+
+    ``finish_reason`` mirrors the OpenAI field: ``"stop"`` (normal),
+    ``"length"`` (max tokens hit), ``"tool_calls"``, ``"content_filter"``, or
+    ``None`` if the provider did not report it.
+    """
 
     content: str
     tool_calls: list[dict[str, Any]]
@@ -28,6 +38,8 @@ class ChatResponse:
     cost_usd: Decimal | None
     request_id: str | None
     raw: dict[str, Any]
+    reasoning: str = ""
+    finish_reason: str | None = None
 
 
 class LlmProvider(abc.ABC):
@@ -179,8 +191,14 @@ def _parse_response(payload: dict[str, Any], *, include_cost: bool) -> ChatRespo
     choices = payload.get("choices") or []
     if not choices:
         raise LlmProviderError("llm_empty_choices")
-    message = choices[0].get("message") or {}
+    choice = choices[0]
+    message = choice.get("message") or {}
     content = message.get("content") or ""
+    # OpenAI/vllm reasoning models use "reasoning_content"; mlx_lm.server uses
+    # "reasoning". Capture either; downstream executors can surface it as a
+    # thinking event for clients without exposing it as the final answer.
+    reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+    finish_reason = choice.get("finish_reason")
     raw_tool_calls = message.get("tool_calls") or []
     tool_calls: list[dict[str, Any]] = []
     for call in raw_tool_calls:
@@ -203,4 +221,6 @@ def _parse_response(payload: dict[str, Any], *, include_cost: bool) -> ChatRespo
         cost_usd=cost,
         request_id=str(request_id) if request_id else None,
         raw=payload,
+        reasoning=reasoning if isinstance(reasoning, str) else "",
+        finish_reason=finish_reason if isinstance(finish_reason, str) else None,
     )

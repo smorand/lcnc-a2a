@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -16,7 +17,9 @@ from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
     collect_tools,
+    empty_response_failure_reason,
     invoke_mcp_tool,
+    reasoning_event,
 )
 from lcnc_a2a.executors.synthesis import (
     run_synthesis,
@@ -38,6 +41,8 @@ from lcnc_a2a.services.similarity import cosine_similarity
 
 REACT_DEFAULT_SIMILARITY_THRESHOLD = 0.95
 FINAL_ANSWER_PREFIX = "Final Answer:"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -233,7 +238,41 @@ class ReActExecutor:
                     continue
 
                 if outcome.kind == "final":
+                    # Surface internal reasoning (FR-023) before the artifact.
+                    thought_chunk = reasoning_event(emitter, response)
+                    if thought_chunk is not None:
+                        yield thought_chunk
+
                     final_text = outcome.final_text
+                    if not final_text.strip():
+                        # The LLM said "Final Answer:" without an answer. Fail
+                        # explicitly instead of completing with empty content.
+                        failure_reason = empty_response_failure_reason(response) or "empty_response"
+                        logger.warning(
+                            "ReAct final outcome had empty text (run=%s "
+                            "finish_reason=%s tokens_out=%d reasoning_chars=%d "
+                            "request_id=%s)",
+                            ctx.run.id,
+                            response.finish_reason,
+                            response.tokens_out,
+                            len(response.reasoning),
+                            response.request_id,
+                        )
+                        await runs_service.finalize_run(
+                            self._db,
+                            run_id=ctx.run.id,
+                            status="failed",
+                            stop_reason=failure_reason,
+                            final_answer=None,
+                            tokens_in=total_tokens_in,
+                            tokens_out=total_tokens_out,
+                            cost_usd=total_cost,
+                            loops=loops,
+                        )
+                        await self._db.commit()
+                        yield emitter.failed(reason=failure_reason)
+                        return
+
                     run_seq += 1
                     await runs_service.append_run_step(
                         self._db,
@@ -484,6 +523,38 @@ class ReActExecutor:
             total_tokens_out += synth_response.tokens_out
             if synth_response.cost_usd is not None:
                 total_cost = (total_cost or Decimal("0")) + synth_response.cost_usd
+
+            # Surface synthesis-time reasoning (FR-023) before the artifact.
+            thought_chunk = reasoning_event(emitter, synth_response)
+            if thought_chunk is not None:
+                yield thought_chunk
+
+            failure_reason = empty_response_failure_reason(synth_response)
+            if failure_reason is not None:
+                logger.warning(
+                    "ReAct synthesis returned empty content (run=%s "
+                    "finish_reason=%s tokens_out=%d reasoning_chars=%d "
+                    "request_id=%s)",
+                    ctx.run.id,
+                    synth_response.finish_reason,
+                    synth_response.tokens_out,
+                    len(synth_response.reasoning),
+                    synth_response.request_id,
+                )
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason=failure_reason,
+                    final_answer=None,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
+                await self._db.commit()
+                yield emitter.failed(reason=failure_reason)
+                return
 
             final_text = synth_response.content or ""
             run_seq += 1

@@ -12,6 +12,7 @@ from typing import Any
 
 from lcnc_a2a.a2a.sse import A2AEventEmitter
 from lcnc_a2a.crypto import CryptoService
+from lcnc_a2a.llm.provider import ChatResponse
 from lcnc_a2a.mcp_client.tool_caller import McpToolError, call_tool_http, call_tool_stdio
 from lcnc_a2a.models.agent import Agent
 from lcnc_a2a.models.agent_mcp_server import AgentMcpServer
@@ -141,13 +142,56 @@ def encode_decimal(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
 
 
+def empty_response_failure_reason(response: ChatResponse) -> str | None:
+    """Return a ``stop_reason`` if the LLM response carries no usable answer.
+
+    Called on the final LLM turn (i.e. ``response.tool_calls`` is empty) to
+    detect that the provider returned nothing the user can read. Returns:
+
+    * ``"max_tokens"`` if the provider reported ``finish_reason="length"``
+      (the answer was truncated to nothing useful);
+    * ``"content_filter"`` if the provider reported a content filter trip;
+    * ``"empty_response"`` for any other case where ``content`` is blank;
+    * ``None`` if there is something to render (i.e. content has non-whitespace).
+
+    Reasoning-only responses (``content`` empty, ``reasoning`` non-empty) still
+    fail here: reasoning is internal and must not be served as the final
+    artifact. Executors are expected to surface ``response.reasoning`` as a
+    thinking event before calling this check.
+    """
+    if (response.content or "").strip():
+        return None
+    finish = response.finish_reason
+    if finish == "length":
+        return "max_tokens"
+    if finish == "content_filter":
+        return "content_filter"
+    return "empty_response"
+
+
+def reasoning_event(emitter: A2AEventEmitter, response: ChatResponse) -> bytes | None:
+    """Build a ``WORKING`` SSE chunk carrying the LLM's reasoning, or ``None``.
+
+    Per the web-a2a FR-023 contract, internal reasoning is exposed via a
+    ``TaskStatusUpdateEvent`` in ``WORKING`` state with a message tagged
+    ``metadata.kind == "thought"``. Returns ``None`` when the response did
+    not include reasoning so the caller can short-circuit cleanly.
+    """
+    text = (response.reasoning or "").strip()
+    if not text:
+        return None
+    return emitter.working(message_text=text, metadata={"kind": "thought"})
+
+
 __all__ = [
     "TOOL_RETRY_BACKOFFS",
     "AsyncIterator",
     "ExecutorContext",
     "collect_tools",
+    "empty_response_failure_reason",
     "encode_decimal",
     "invoke_mcp_tool",
     "needs_confirmation",
     "parse_tool_arguments",
+    "reasoning_event",
 ]
