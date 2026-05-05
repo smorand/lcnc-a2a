@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lcnc_a2a.crypto import CryptoService
-from lcnc_a2a.executors.base import ExecutorContext, parse_tool_arguments
+from lcnc_a2a.executors.base import ExecutorContext, needs_confirmation, parse_tool_arguments
 from lcnc_a2a.llm.provider import ChatResponse, LlmProvider, LlmProviderError
 from lcnc_a2a.llm.tool_format import to_openai_tools
 from lcnc_a2a.mcp_client.tool_caller import McpToolError, call_tool_http, call_tool_stdio
@@ -22,6 +22,19 @@ from lcnc_a2a.services.mcp_discovery import decrypt_env, decrypt_headers
 
 MAX_ITERATIONS = 50
 TOOL_RETRY_BACKOFFS = (0.2, 0.6, 1.8)
+_APPROVAL_TOKENS = frozenset({"yes", "y", "ok", "oui", "o", "approve", "approved", "confirm"})
+
+
+def _is_approval(text: str) -> bool:
+    """Loose user-confirmation parser for INPUT_REQUIRED resume."""
+    return text.strip().lower() in _APPROVAL_TOKENS
+
+
+def _summarize_call(call: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    fn = call.get("function") or {}
+    name = fn.get("name") or call.get("name") or ""
+    args = parse_tool_arguments(fn.get("arguments", call.get("arguments", {})))
+    return name, args
 
 
 class SimpleExecutor:
@@ -39,31 +52,34 @@ class SimpleExecutor:
         cancelled = False
         cancel_event = ctx.cancellation
         emitter = ctx.emitter
-        # Persist user message first (may raise context_full).
-        try:
-            await messages_service.append_message(
-                self._db,
-                context_id=ctx.context_id,
-                role="user",
-                content=ctx.user_text,
-            )
-        except messages_service.ContextFullError:
-            await runs_service.finalize_run(
-                self._db,
-                run_id=ctx.run.id,
-                status="failed",
-                stop_reason="context_full",
-                final_answer=None,
-                tokens_in=0,
-                tokens_out=0,
-                cost_usd=None,
-                loops=0,
-            )
+        is_resume = ctx.resume_action is not None
+
+        if not is_resume:
+            # Fresh run: persist the user's message (may raise context_full).
+            try:
+                await messages_service.append_message(
+                    self._db,
+                    context_id=ctx.context_id,
+                    role="user",
+                    content=ctx.user_text,
+                )
+            except messages_service.ContextFullError:
+                await runs_service.finalize_run(
+                    self._db,
+                    run_id=ctx.run.id,
+                    status="failed",
+                    stop_reason="context_full",
+                    final_answer=None,
+                    tokens_in=0,
+                    tokens_out=0,
+                    cost_usd=None,
+                    loops=0,
+                )
+                await self._db.commit()
+                yield emitter.working()
+                yield emitter.failed(reason="context_full")
+                return
             await self._db.commit()
-            yield emitter.working()
-            yield emitter.failed(reason="context_full")
-            return
-        await self._db.commit()
 
         yield emitter.working()
 
@@ -87,6 +103,45 @@ class SimpleExecutor:
         total_tokens_out = 0
         total_cost: Decimal | None = None
         tracer = get_tracer()
+
+        if is_resume:
+            # Restore the snapshot the pause path persisted.
+            action = ctx.resume_action or {}
+            run_seq = int(action.get("run_seq") or 0)
+            loops = int(action.get("loops") or 0)
+            total_tokens_in = int(action.get("tokens_in") or 0)
+            total_tokens_out = int(action.get("tokens_out") or 0)
+            saved_calls: list[dict[str, Any]] = action.get("tool_calls") or []
+            approved = _is_approval(ctx.user_text)
+            for call in saved_calls:
+                if cancel_event.is_set():
+                    cancelled = True
+                    break
+                run_seq += 1
+                tool_call_id = call.get("id") or ""
+                tool_name, _args = _summarize_call(call)
+                if approved:
+                    tool_payload = await self._invoke_tool(call, tool_lookup, tracer)
+                else:
+                    tool_payload = {"is_error": True, "content": "user_denied"}
+                await runs_service.append_run_step(
+                    self._db,
+                    run_id=ctx.run.id,
+                    seq=run_seq,
+                    role="tool",
+                    content=tool_payload.get("content", ""),
+                    tool_name=tool_name,
+                    tool_result_json=tool_payload,
+                )
+                await messages_service.append_message(
+                    self._db,
+                    context_id=ctx.context_id,
+                    role="tool",
+                    content=str(tool_payload.get("content", "")),
+                    tool_call_id=tool_call_id,
+                )
+            await runs_service.resume_run(self._db, run_id=ctx.run.id)
+            await self._db.commit()
 
         try:
             for iteration in range(MAX_ITERATIONS + 1):
@@ -218,6 +273,37 @@ class SimpleExecutor:
                 )
                 loops += 1
 
+                # Pause if any tool call carries destructiveHint=true. The
+                # entire batch waits for one user confirmation; resume executes
+                # all of them (or none if denied).
+                destructive = self._first_destructive(response.tool_calls, tool_lookup)
+                if destructive is not None:
+                    name, args = _summarize_call(destructive)
+                    pending = {
+                        "tool_calls": response.tool_calls,
+                        "run_seq": run_seq,
+                        "loops": loops,
+                        "tokens_in": total_tokens_in,
+                        "tokens_out": total_tokens_out,
+                    }
+                    await runs_service.pause_run_for_input(
+                        self._db,
+                        run_id=ctx.run.id,
+                        pending_action=pending,
+                    )
+                    await self._db.commit()
+                    yield emitter.input_required(
+                        f"The agent wants to call '{name}' with arguments {args}. "
+                        f"Reply 'yes' to approve or 'no' to skip.",
+                        metadata={
+                            "kind": "confirm_tool",
+                            "tool_name": name,
+                            "arguments": args,
+                            "tool_call_id": destructive.get("id") or "",
+                        },
+                    )
+                    return
+
                 for call in response.tool_calls:
                     if cancel_event.is_set():
                         cancelled = True
@@ -279,6 +365,21 @@ class SimpleExecutor:
 
         if cancelled:
             yield emitter.canceled()
+
+    def _first_destructive(
+        self,
+        tool_calls: list[dict[str, Any]],
+        tool_lookup: dict[str, dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Return the first tool call whose descriptor has ``destructiveHint=true``."""
+        for call in tool_calls:
+            name, _ = _summarize_call(call)
+            target = tool_lookup.get(name)
+            if target is None:
+                continue
+            if needs_confirmation(target.get("descriptor") or {}):
+                return call
+        return None
 
     def _collect_tools(self, ctx: ExecutorContext) -> list[dict[str, Any]]:
         """Flatten ``tools_cache`` across all attached MCP servers."""

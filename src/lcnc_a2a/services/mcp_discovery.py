@@ -32,8 +32,38 @@ class InvalidMcpFormError(ValueError):
         self.code = code
 
 
+_ANNOTATION_FIELDS = (
+    "title",
+    "readOnlyHint",
+    "destructiveHint",
+    "idempotentHint",
+    "openWorldHint",
+)
+
+
+def _extract_annotations(raw: Any) -> dict[str, Any]:
+    """Pull MCP ToolAnnotations off either a dict or an SDK Tool object.
+
+    These hints are used by the agent to decide whether a confirmation is
+    required before invoking the tool (see ``TASK_STATE_INPUT_REQUIRED``).
+    """
+    if isinstance(raw, dict):
+        ann = raw.get("annotations") or {}
+    else:
+        ann = getattr(raw, "annotations", None) or {}
+        if not isinstance(ann, dict):
+            ann = {field: getattr(ann, field, None) for field in _ANNOTATION_FIELDS}
+    if not isinstance(ann, dict):
+        return {}
+    return {field: ann[field] for field in _ANNOTATION_FIELDS if ann.get(field) is not None}
+
+
 def normalize_tools(raw_tools: list[Any]) -> list[dict[str, Any]]:
-    """Convert MCP SDK tool objects (or dicts) to the canonical cache format."""
+    """Convert MCP SDK tool objects (or dicts) to the canonical cache format.
+
+    Preserves the ``annotations`` block (``destructiveHint`` etc.) so the
+    executor can apply confirmation policies before invoking a tool.
+    """
     normalized: list[dict[str, Any]] = []
     for tool in raw_tools:
         if isinstance(tool, dict):
@@ -44,13 +74,15 @@ def normalize_tools(raw_tools: list[Any]) -> list[dict[str, Any]]:
             name = getattr(tool, "name", "")
             description = getattr(tool, "description", None) or ""
             schema = getattr(tool, "inputSchema", None) or {}
-        normalized.append(
-            {
-                "name": name,
-                "description": description,
-                "input_schema": schema,
-            }
-        )
+        entry: dict[str, Any] = {
+            "name": name,
+            "description": description,
+            "input_schema": schema,
+        }
+        annotations = _extract_annotations(tool)
+        if annotations:
+            entry["annotations"] = annotations
+        normalized.append(entry)
     return normalized
 
 

@@ -27,6 +27,7 @@ from lcnc_a2a.a2a.envelope import (
     TASK_STATE_CANCELED,
     TASK_STATE_COMPLETED,
     TASK_STATE_FAILED,
+    TASK_STATE_INPUT_REQUIRED,
     TASK_STATE_SUBMITTED,
     TASK_STATE_WORKING,
     A2AEnvelopeError,
@@ -171,12 +172,27 @@ async def _prepare_run(
 
     context = await messages_service.get_or_create_context(db, agent_id=agent.id, context_id=context_uuid)
     task_id = envelope.task_id or str(uuid.uuid4())
-    run = await runs_service.create_run(
-        db,
-        agent=agent,
-        context_id=context.id,
-        a2a_task_id=task_id,
-    )
+
+    # If the request targets an existing paused task, resume it instead of
+    # creating a new run (A2A spec section 3.1: continue with same taskId).
+    resume_action: dict[str, Any] | None = None
+    run: AgentRun | None = None
+    if envelope.task_id:
+        existing = await runs_service.find_paused_run(
+            db,
+            agent_id=agent.id,
+            a2a_task_id=envelope.task_id,
+        )
+        if existing is not None:
+            resume_action = existing.pending_action if isinstance(existing.pending_action, dict) else {}
+            run = existing
+    if run is None:
+        run = await runs_service.create_run(
+            db,
+            agent=agent,
+            context_id=context.id,
+            a2a_task_id=task_id,
+        )
     await db.commit()
 
     registry = _cancellation_registry(request)
@@ -197,7 +213,7 @@ async def _prepare_run(
         return None, None, None, JSONResponse({"error": "provider_key_unreadable"}, status_code=500)
 
     servers = await list_servers_for_agent(db, agent_id=agent.id)
-    emitter = A2AEventEmitter(task_id=task_id, context_id=str(context.id))
+    emitter = A2AEventEmitter(task_id=run.a2a_task_id or task_id, context_id=str(context.id))
     ctx = ExecutorContext(
         agent=agent,
         run=run,
@@ -207,6 +223,7 @@ async def _prepare_run(
         provider_api_key=provider_key,
         cancellation=cancel_event,
         emitter=emitter,
+        resume_action=resume_action,
     )
     return ctx, run, cancel_event, None
 
@@ -489,6 +506,7 @@ async def _find_run_by_task_id(
 def _run_status_to_task_state(status: str) -> str:
     return {
         "running": TASK_STATE_WORKING,
+        "paused": TASK_STATE_INPUT_REQUIRED,
         "completed": TASK_STATE_COMPLETED,
         "failed": TASK_STATE_FAILED,
         "cancelled": TASK_STATE_CANCELED,

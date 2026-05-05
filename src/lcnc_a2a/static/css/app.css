@@ -512,6 +512,10 @@ tr.run-trace-row td { background: var(--color-bg); padding: 0; }
   border-radius: var(--radius-md);
   font-size: 0.8125rem;
   font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: pre-line;
   line-height: 1.4;
   white-space: pre-line;
   box-shadow: var(--shadow-md);

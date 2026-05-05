@@ -33,6 +33,11 @@ class ExecutorContext:
     provider_api_key: str
     cancellation: asyncio.Event
     emitter: A2AEventEmitter
+    # When set, this is a resume of a previously paused run. The executor
+    # consumes ``resume_action`` (the snapshot the pause path persisted into
+    # ``agent_runs.pending_action``) and treats ``user_text`` as the user's
+    # answer to the input_required prompt.
+    resume_action: dict[str, Any] | None = None
 
 
 def collect_tools(servers: list[AgentMcpServer]) -> list[dict[str, Any]]:
@@ -48,6 +53,19 @@ def collect_tools(servers: list[AgentMcpServer]) -> list[dict[str, Any]]:
                 continue
             out.append({"server": server, "descriptor": descriptor})
     return out
+
+
+def needs_confirmation(descriptor: dict[str, Any]) -> bool:
+    """Return ``True`` if the MCP tool descriptor advertises ``destructiveHint``.
+
+    Per the MCP spec, ``destructiveHint=true`` indicates the tool may perform
+    irreversible side-effects. The agent surfaces a confirmation request via
+    ``TASK_STATE_INPUT_REQUIRED`` instead of invoking it blindly.
+    """
+    annotations = descriptor.get("annotations") if isinstance(descriptor, dict) else None
+    if not isinstance(annotations, dict):
+        return False
+    return bool(annotations.get("destructiveHint"))
 
 
 async def invoke_mcp_tool(
@@ -130,5 +148,6 @@ __all__ = [
     "collect_tools",
     "encode_decimal",
     "invoke_mcp_tool",
+    "needs_confirmation",
     "parse_tool_arguments",
 ]

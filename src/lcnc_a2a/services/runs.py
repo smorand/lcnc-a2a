@@ -125,3 +125,58 @@ async def list_running_run_ids_for_agent(db: AsyncSession, *, agent_id: uuid.UUI
     """Return the IDs of all ``running`` runs for an agent."""
     result = await db.execute(select(AgentRun.id).where(AgentRun.agent_id == agent_id, AgentRun.status == "running"))
     return [row[0] for row in result.all()]
+
+
+async def pause_run_for_input(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    pending_action: dict[str, Any],
+) -> None:
+    """Mark a run as paused awaiting user input (TASK_STATE_INPUT_REQUIRED).
+
+    ``pending_action`` is a JSON snapshot describing what the executor was
+    about to do; the resume path consumes it. Shape:
+      {"kind": "tool_call", "tool_call": {...}, "loops": int, ...}
+    """
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if run is None:
+        return
+    run.status = "paused"
+    run.stop_reason = "input_required"
+    run.pending_action = pending_action
+    await db.flush()
+
+
+async def find_paused_run(
+    db: AsyncSession,
+    *,
+    agent_id: uuid.UUID,
+    a2a_task_id: str,
+) -> AgentRun | None:
+    """Return the paused run for ``a2a_task_id`` (if any) belonging to ``agent_id``."""
+    result = await db.execute(
+        select(AgentRun).where(
+            AgentRun.agent_id == agent_id,
+            AgentRun.a2a_task_id == a2a_task_id,
+            AgentRun.status == "paused",
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def resume_run(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+) -> None:
+    """Flip a paused run back to running and clear ``pending_action``."""
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if run is None:
+        return
+    run.status = "running"
+    run.stop_reason = None
+    run.pending_action = None
+    await db.flush()

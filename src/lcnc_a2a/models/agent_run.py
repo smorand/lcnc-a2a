@@ -48,3 +48,6 @@ class AgentRun(Base):
     plan: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
     final_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     config_snapshot: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    # Snapshot of a tool call awaiting user confirmation (TASK_STATE_INPUT_REQUIRED).
+    # Set when status='paused'; consumed and cleared on resume.
+    pending_action: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
