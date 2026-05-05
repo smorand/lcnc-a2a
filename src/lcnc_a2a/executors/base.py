@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from lcnc_a2a.a2a.sse import A2AEventEmitter
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.mcp_client.tool_caller import McpToolError, call_tool_http, call_tool_stdio
 from lcnc_a2a.models.agent import Agent
@@ -31,6 +32,7 @@ class ExecutorContext:
     mcp_servers: list[AgentMcpServer]
     provider_api_key: str
     cancellation: asyncio.Event
+    emitter: A2AEventEmitter
 
 
 def collect_tools(servers: list[AgentMcpServer]) -> list[dict[str, Any]]:

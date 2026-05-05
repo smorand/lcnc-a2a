@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 NAME_MAX = 120
 DESCRIPTION_MAX = 2000
@@ -11,14 +13,24 @@ PROMPT_MAX = 40000
 MAX_LOOPS_MIN = 1
 MAX_LOOPS_MAX = 50
 MAX_TOKENS_MIN = 100
-MAX_TOKENS_MAX = 200000
+MAX_TOKENS_MAX = 1_000_000
 SIMILARITY_MIN = 0.50
 SIMILARITY_MAX = 0.99
 MAX_STEPS_MIN = 1
 MAX_STEPS_MAX = 50
 
+DEFAULT_MAX_LOOPS = 30
+DEFAULT_MAX_TOKENS = 1_000_000
+DEFAULT_SIMILARITY = 0.85
+DEFAULT_MAX_STEPS = 20
+
+OPENROUTER_ENV_VAR = "OPENROUTER_API_KEY"
+ENV_VAR_NAME_MAX = 120
+LOCALHOST_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
+
 ALLOWED_MODES = frozenset({"simple", "react", "plan_execute"})
 ALLOWED_PROVIDERS = frozenset({"openrouter", "openai_compatible"})
+ALLOWED_API_KEY_SOURCES = frozenset({"input", "env_snapshot", "env_dynamic"})
 
 
 class AgentFormError(ValueError):
@@ -40,6 +52,7 @@ class AgentFormData:
     model_endpoint: str
     model_id: str
     provider_api_key: str
+    provider_api_key_env_var: str | None
     system_prompt: str | None
     planner_prompt: str | None
     executor_prompt: str | None
@@ -63,12 +76,59 @@ def _coerce_float(raw: str, *, code: str) -> float:
         raise AgentFormError(code) from exc
 
 
-def _default_max_loops(mode: str) -> int:
-    return 1 if mode == "plan_execute" else 10
+def _is_localhost_endpoint(endpoint: str) -> bool:
+    try:
+        host = urlparse(endpoint).hostname
+    except ValueError:
+        return False
+    return host is not None and host.lower() in LOCALHOST_HOSTNAMES
 
 
-def _default_max_tokens(mode: str) -> int:
-    return 16000 if mode == "plan_execute" else 8000
+def _validate_env_var_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise AgentFormError("api_key_env_var_name_required")
+    if len(name) > ENV_VAR_NAME_MAX:
+        raise AgentFormError("api_key_env_var_name_too_long")
+    if not all(c.isalnum() or c == "_" for c in name) or name[0].isdigit():
+        raise AgentFormError("api_key_env_var_name_invalid")
+    return name
+
+
+def _resolve_api_key(
+    *,
+    api_key_source: str,
+    provider_api_key: str,
+    provider_api_key_env_var_name: str,
+    model_provider: str,
+    is_localhost: bool,
+    require_provider_api_key: bool,
+) -> tuple[str, str | None]:
+    """Apply the API-key source rules and return ``(plain_key, env_var_name)``."""
+    if api_key_source not in ALLOWED_API_KEY_SOURCES:
+        raise AgentFormError("api_key_source_invalid")
+
+    if is_localhost:
+        return "", None
+
+    if api_key_source == "input":
+        if require_provider_api_key and not provider_api_key:
+            raise AgentFormError("provider_api_key_required")
+        return provider_api_key, None
+
+    # env_snapshot or env_dynamic: pick the env var name.
+    if model_provider == "openrouter":
+        env_var = OPENROUTER_ENV_VAR
+    else:
+        env_var = _validate_env_var_name(provider_api_key_env_var_name)
+
+    if api_key_source == "env_snapshot":
+        value = os.environ.get(env_var, "")
+        if not value:
+            raise AgentFormError("api_key_env_not_found")
+        return value, None
+
+    return "", env_var
 
 
 def validate_create_agent_form(
@@ -80,6 +140,8 @@ def validate_create_agent_form(
     model_endpoint: str,
     model_id: str,
     provider_api_key: str,
+    api_key_source: str = "input",
+    provider_api_key_env_var_name: str = "",
     system_prompt: str,
     planner_prompt: str,
     executor_prompt: str,
@@ -105,8 +167,10 @@ def validate_create_agent_form(
     if model_provider not in ALLOWED_PROVIDERS:
         raise AgentFormError("model_provider_invalid")
 
-    if not model_endpoint.strip():
+    endpoint_stripped = model_endpoint.strip()
+    if not endpoint_stripped:
         raise AgentFormError("model_endpoint_required")
+    is_localhost = _is_localhost_endpoint(endpoint_stripped)
 
     model_id = model_id.strip()
     if not model_id:
@@ -114,8 +178,14 @@ def validate_create_agent_form(
     if len(model_id) > MODEL_ID_MAX:
         raise AgentFormError("model_id_too_long")
 
-    if require_provider_api_key and not provider_api_key:
-        raise AgentFormError("provider_api_key_required")
+    resolved_key, env_var_name = _resolve_api_key(
+        api_key_source=api_key_source,
+        provider_api_key=provider_api_key,
+        provider_api_key_env_var_name=provider_api_key_env_var_name,
+        model_provider=model_provider,
+        is_localhost=is_localhost,
+        require_provider_api_key=require_provider_api_key,
+    )
 
     parsed_system: str | None = None
     parsed_planner: str | None = None
@@ -135,25 +205,27 @@ def validate_create_agent_form(
         parsed_planner = planner_prompt
         parsed_executor = executor_prompt
 
-    parsed_max_loops = _coerce_int(max_loops, code="max_loops_invalid") if max_loops else _default_max_loops(mode)
+    parsed_max_loops = _coerce_int(max_loops, code="max_loops_invalid") if max_loops else DEFAULT_MAX_LOOPS
     if not (MAX_LOOPS_MIN <= parsed_max_loops <= MAX_LOOPS_MAX):
         raise AgentFormError("max_loops_out_of_range")
 
-    parsed_max_tokens = _coerce_int(max_tokens, code="max_tokens_invalid") if max_tokens else _default_max_tokens(mode)
+    parsed_max_tokens = _coerce_int(max_tokens, code="max_tokens_invalid") if max_tokens else DEFAULT_MAX_TOKENS
     if not (MAX_TOKENS_MIN <= parsed_max_tokens <= MAX_TOKENS_MAX):
         raise AgentFormError("max_tokens_out_of_range")
 
     parsed_similarity: float | None = None
     if mode == "react":
         parsed_similarity = (
-            _coerce_float(similarity_threshold, code="similarity_threshold_invalid") if similarity_threshold else 0.95
+            _coerce_float(similarity_threshold, code="similarity_threshold_invalid")
+            if similarity_threshold
+            else DEFAULT_SIMILARITY
         )
         if not (SIMILARITY_MIN <= parsed_similarity <= SIMILARITY_MAX):
             raise AgentFormError("similarity_threshold_out_of_range")
 
     parsed_max_steps: int | None = None
     if mode == "plan_execute":
-        parsed_max_steps = _coerce_int(max_steps, code="max_steps_invalid") if max_steps else 20
+        parsed_max_steps = _coerce_int(max_steps, code="max_steps_invalid") if max_steps else DEFAULT_MAX_STEPS
         if not (MAX_STEPS_MIN <= parsed_max_steps <= MAX_STEPS_MAX):
             raise AgentFormError("max_steps_out_of_range")
 
@@ -162,9 +234,10 @@ def validate_create_agent_form(
         description=description.strip() or None,
         mode=mode,
         model_provider=model_provider,
-        model_endpoint=model_endpoint.strip(),
+        model_endpoint=endpoint_stripped,
         model_id=model_id,
-        provider_api_key=provider_api_key,
+        provider_api_key=resolved_key,
+        provider_api_key_env_var=env_var_name,
         system_prompt=parsed_system,
         planner_prompt=parsed_planner,
         executor_prompt=parsed_executor,

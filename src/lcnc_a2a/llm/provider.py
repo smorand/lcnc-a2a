@@ -133,10 +133,14 @@ async def _post_chat(
     max_tokens: int,
     include_cost: bool,
 ) -> ChatResponse:
+    # ``max_tokens`` is the agent's cumulative output budget; the executors
+    # enforce it across loops. We deliberately do not forward it as a per-call
+    # cap so each LLM call uses the server's default. Forwarding e.g. 1_000_000
+    # to a local mlx_lm makes it allocate that budget literally and stall.
+    del max_tokens
     body: dict[str, Any] = {
         "model": model_id,
         "messages": messages,
-        "max_tokens": max_tokens,
     }
     if tools:
         body["tools"] = tools
@@ -144,13 +148,12 @@ async def _post_chat(
         body["usage"] = {"include": True}
 
     url = f"{endpoint.rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     own_client = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
+        client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
     try:
         response = await client.post(url, json=body, headers=headers)
     except httpx.HTTPError as exc:

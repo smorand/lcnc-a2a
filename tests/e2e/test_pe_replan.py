@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_reason,
+    event_state,
     fetch_runs_for_agent,
     install_llm_mock,
     make_a2a_envelope,
@@ -95,7 +97,7 @@ async def test_e2e_079_pe_max_tokens_forces_synthesis(
     assert len(call_lines) == 2
 
     # Final SSE state is "completed".
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
 
 @pytest.mark.asyncio
@@ -133,7 +135,7 @@ async def test_e2e_080_pe_replan_exceeded_after_three_replans(
         body=make_a2a_envelope("hi"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "failed", "reason": "replan_exceeded"}
+    assert event_state(events[-1]) == "TASK_STATE_FAILED" and event_reason(events[-1]) == "replan_exceeded"
 
     planner_calls = _planner_calls(stub)
     assert len(planner_calls) == 4
@@ -203,7 +205,7 @@ async def test_e2e_084_pe_replan_replaces_remaining_keeps_completed(
         body=make_a2a_envelope("hi"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     run_id = runs[0]["id"]

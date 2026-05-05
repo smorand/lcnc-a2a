@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -16,7 +17,6 @@ from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.deps import get_crypto, get_csrf_manager, get_db, get_templates
 from lcnc_a2a.models.agent_api_key import AgentApiKey
 from lcnc_a2a.models.user import User
-from lcnc_a2a.routes.a2a import handle_a2a_post
 from lcnc_a2a.schemas.agent_form import AgentFormError, validate_create_agent_form
 from lcnc_a2a.services.agents import (
     AgentNameTakenError,
@@ -30,8 +30,31 @@ from lcnc_a2a.services.api_keys import create_agent_api_key
 from lcnc_a2a.services.runs import list_running_run_ids_for_agent
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
+_LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_PRESET_LABELS = {
+    "openrouter": "OpenRouter",
+    "localhost": "Localhost (mlx_lm)",
+    "other": "Other (OpenAI-compatible)",
+}
 
 router = APIRouter()
+
+
+def _infer_model_preset(provider: str, endpoint: str) -> str:
+    """Map ``(model_provider, model_endpoint)`` back to a UI preset name."""
+    if provider == "openrouter":
+        return "openrouter"
+    try:
+        host = urlparse(endpoint).hostname
+    except ValueError:
+        host = None
+    if host is not None and host.lower() in _LOCALHOST_HOSTS:
+        return "localhost"
+    return "other"
+
+
+def _infer_api_key_source(agent_provider_api_key_env_var: str | None) -> str:
+    return "env_dynamic" if agent_provider_api_key_env_var else "input"
 
 
 @router.get("/agents/new")
@@ -47,7 +70,13 @@ async def new_agent_form(
     return templates.TemplateResponse(
         request,
         "agents/new.html",
-        {"user": user, "csrf_token": csrf.generate(), "error": None, "form": {}},
+        {
+            "user": user,
+            "csrf_token": csrf.generate(),
+            "error": None,
+            "form": {},
+            "model_preset": "openrouter",
+        },
     )
 
 
@@ -61,6 +90,8 @@ async def create_agent_submit(
     model_endpoint: str = Form(""),
     model_id: str = Form(""),
     provider_api_key: str = Form(""),
+    api_key_source: str = Form("input"),
+    provider_api_key_env_var_name: str = Form(""),
     system_prompt: str = Form(""),
     planner_prompt: str = Form(""),
     executor_prompt: str = Form(""),
@@ -88,6 +119,8 @@ async def create_agent_submit(
         "model_provider": model_provider,
         "model_endpoint": model_endpoint,
         "model_id": model_id,
+        "api_key_source": api_key_source,
+        "provider_api_key_env_var_name": provider_api_key_env_var_name,
         "system_prompt": system_prompt,
         "planner_prompt": planner_prompt,
         "executor_prompt": executor_prompt,
@@ -106,6 +139,8 @@ async def create_agent_submit(
             model_endpoint=model_endpoint,
             model_id=model_id,
             provider_api_key=provider_api_key,
+            api_key_source=api_key_source,
+            provider_api_key_env_var_name=provider_api_key_env_var_name,
             system_prompt=system_prompt,
             planner_prompt=planner_prompt,
             executor_prompt=executor_prompt,
@@ -128,6 +163,7 @@ async def create_agent_submit(
             model_endpoint=data.model_endpoint,
             model_id=data.model_id,
             provider_api_key=data.provider_api_key,
+            provider_api_key_env_var=data.provider_api_key_env_var,
             crypto=crypto,
             system_prompt=data.system_prompt,
             planner_prompt=data.planner_prompt,
@@ -179,6 +215,7 @@ async def agent_detail(
     cookie_name = f"{ONE_TIME_KEY_COOKIE_PREFIX}{agent.id}"
     one_time_key = request.cookies.get(cookie_name)
 
+    preset = _infer_model_preset(agent.model_provider, agent.model_endpoint)
     response: Response = templates.TemplateResponse(
         request,
         "agents/detail.html",
@@ -188,6 +225,7 @@ async def agent_detail(
             "keys": keys,
             "one_time_key": one_time_key,
             "csrf_token": csrf.generate(),
+            "model_preset_label": _PRESET_LABELS.get(preset, preset),
         },
     )
     if one_time_key is not None:
@@ -218,6 +256,8 @@ async def edit_agent_form(
         "model_provider": agent.model_provider,
         "model_endpoint": agent.model_endpoint,
         "model_id": agent.model_id,
+        "api_key_source": _infer_api_key_source(agent.provider_api_key_env_var),
+        "provider_api_key_env_var_name": agent.provider_api_key_env_var or "",
         "system_prompt": agent.system_prompt or "",
         "planner_prompt": agent.planner_prompt or "",
         "executor_prompt": agent.executor_prompt or "",
@@ -233,6 +273,7 @@ async def edit_agent_form(
             "user": user,
             "agent": agent,
             "form": form,
+            "model_preset": _infer_model_preset(agent.model_provider, agent.model_endpoint),
             "csrf_token": csrf.generate(),
             "error": None,
         },
@@ -249,13 +290,7 @@ async def update_or_delete_agent(
     crypto: CryptoService = Depends(get_crypto),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> Response:
-    """Update or (when ``_method=DELETE``) delete an agent.
-
-    Also acts as the A2A endpoint when ``Authorization: Bearer ...`` is set.
-    """
-    if request.headers.get("authorization") or request.headers.get("content-type", "").startswith("application/json"):
-        return await handle_a2a_post(agent_id=agent_id, request=request, db=db, crypto=crypto)
-
+    """Update or (when ``_method=DELETE``) delete an agent (HTML form)."""
     form = await request.form()
 
     def _f(name: str) -> str:
@@ -269,6 +304,8 @@ async def update_or_delete_agent(
     model_endpoint = _f("model_endpoint")
     model_id = _f("model_id")
     provider_api_key = _f("provider_api_key")
+    api_key_source = _f("api_key_source") or "input"
+    provider_api_key_env_var_name = _f("provider_api_key_env_var_name")
     system_prompt = _f("system_prompt")
     planner_prompt = _f("planner_prompt")
     executor_prompt = _f("executor_prompt")
@@ -304,6 +341,8 @@ async def update_or_delete_agent(
         "model_provider": model_provider,
         "model_endpoint": model_endpoint,
         "model_id": model_id,
+        "api_key_source": api_key_source,
+        "provider_api_key_env_var_name": provider_api_key_env_var_name,
         "system_prompt": system_prompt,
         "planner_prompt": planner_prompt,
         "executor_prompt": executor_prompt,
@@ -322,6 +361,8 @@ async def update_or_delete_agent(
             model_endpoint=model_endpoint,
             model_id=model_id,
             provider_api_key=provider_api_key,
+            api_key_source=api_key_source,
+            provider_api_key_env_var_name=provider_api_key_env_var_name,
             system_prompt=system_prompt,
             planner_prompt=planner_prompt,
             executor_prompt=executor_prompt,
@@ -345,6 +386,7 @@ async def update_or_delete_agent(
             model_endpoint=data.model_endpoint,
             model_id=data.model_id,
             provider_api_key=data.provider_api_key,
+            provider_api_key_env_var=data.provider_api_key_env_var,
             crypto=crypto,
             system_prompt=data.system_prompt,
             planner_prompt=data.planner_prompt,
@@ -454,10 +496,11 @@ def _render_form_error(
     form: dict[str, str],
     error: str,
 ) -> Response:
+    preset = _infer_model_preset(form.get("model_provider", "openrouter"), form.get("model_endpoint", ""))
     return templates.TemplateResponse(
         request,
         "agents/new.html",
-        {"csrf_token": csrf.generate(), "error": error, "form": form},
+        {"csrf_token": csrf.generate(), "error": error, "form": form, "model_preset": preset},
         status_code=400,
     )
 
@@ -470,9 +513,16 @@ def _render_edit_form_error(
     form: dict[str, str],
     error: str,
 ) -> Response:
+    preset = _infer_model_preset(form.get("model_provider", "openrouter"), form.get("model_endpoint", ""))
     return templates.TemplateResponse(
         request,
         "agents/edit.html",
-        {"csrf_token": csrf.generate(), "error": error, "form": form, "agent": agent},
+        {
+            "csrf_token": csrf.generate(),
+            "error": error,
+            "form": form,
+            "agent": agent,
+            "model_preset": preset,
+        },
         status_code=400,
     )

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ThemeName = Literal["g100", "g10"]
 
 
 class Settings(BaseSettings):
@@ -21,9 +24,9 @@ class Settings(BaseSettings):
     )
 
     database_url: str
-    encryption_key: str
-    session_secret: str
+    encryption_key: str | None = None
     trace_file: Path = Path("traces/lcnc-a2a.jsonl")
     session_expiry_hours: int = 24
     csrf_max_age_seconds: int = 3600
     metrics_window_days: int = 30
+    theme: ThemeName = "g100"

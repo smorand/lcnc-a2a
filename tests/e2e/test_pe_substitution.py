@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_state,
     fetch_runs_for_agent,
     fetch_steps,
     install_llm_mock,
@@ -54,7 +55,7 @@ async def test_e2e_081_pe_single_step_synthesize_tool(
         body=make_a2a_envelope("hi"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "completed"

@@ -1,0 +1,87 @@
+/* ============================================================
+   Theme: g100 (IBM Carbon Design System — Gray 100, dark mode)
+   Defines every CSS variable consumed by app.css.
+   ============================================================ */
+
+:root {
+  /* Backgrounds */
+  --color-bg:                #161616;
+  --color-bg-hover:          #262626;
+  --color-surface:           #1f1f1f;
+  --color-surface-elevated:  #262626;
+
+  /* Borders */
+  --color-border:            #393939;
+  --color-border-strong:     #525252;
+
+  /* Text */
+  --color-text:              #f4f4f4;
+  --color-text-muted:        #c6c6c6;
+  --color-text-subtle:       #6f6f6f;
+
+  /* Links */
+  --color-link:              #78a9ff;
+  --color-link-hover:        #a6c8ff;
+
+  /* Brand / interactive */
+  --color-primary:           #0f62fe;
+  --color-primary-hover:     #0353e9;
+  --color-primary-active:    #002d9c;
+  --color-on-primary:        #ffffff;
+
+  --color-secondary:         #393939;
+  --color-secondary-hover:   #4c4c4c;
+
+  --color-danger:            #fa4d56;
+  --color-danger-hover:      #ff8389;
+  --color-on-danger:         #ffffff;
+
+  --color-success:           #42be65;
+  --color-warning:           #f1c21b;
+  --color-info:              #4589ff;
+
+  --color-focus:             #ffffff;
+
+  /* Inputs */
+  --input-bg:                #262626;
+  --input-bg-hover:          #353535;
+  --input-border:            #393939;
+  --input-border-focus:      #ffffff;
+
+  /* Typography */
+  --font-sans:        "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:        "IBM Plex Mono", "Menlo", "Courier New", monospace;
+  --text-base-size:   14px;
+  --text-line-height: 1.5;
+
+  /* Spacing scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+
+  /* Radii */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  /* Layout */
+  --header-height:     3rem;
+  --content-max-width: 1200px;
+
+  /* Transitions */
+  --transition-fast:     110ms cubic-bezier(0.2, 0, 0.38, 0.9);
+  --transition-moderate: 150ms cubic-bezier(0.2, 0, 0.38, 0.9);
+}
+
+html { color-scheme: dark; }

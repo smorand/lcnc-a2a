@@ -21,13 +21,17 @@ PostgreSQL 14+  (users, sessions)
 ## Startup sequence
 
 1. `lcnc_a2a.main` is imported (e.g. by `uvicorn lcnc_a2a.main:app`).
-2. `_load_settings()` checks `LCNC_A2A_ENCRYPTION_KEY` first; if missing, writes `LCNC_A2A_ENCRYPTION_KEY is required` to stderr and `sys.exit(1)`.
-3. `Settings()` validates the rest (database_url, session_secret); on validation failure, exits with the same canonical message if encryption_key is the offender.
-4. `CryptoService(settings.encryption_key)` validates the Fernet key; failure -> same canonical message + exit.
-5. `Database`, `CSRFManager`, `SessionManager`, `DevModeAuthProvider`, `Jinja2Templates` get wired into `app.state`.
-6. `configure_tracing(settings.trace_file)` registers the JSONL exporter (idempotent).
-7. `/static`, `auth_routes`, `dashboard_routes` are mounted/included.
-8. `lifespan` ensures `Database.close()` runs on shutdown.
+2. `Settings()` loads env (only `LCNC_A2A_DATABASE_URL` is mandatory; `encryption_key` is optional).
+3. `bootstrap_secrets(database_url, env_encryption_key)` runs synchronously (psycopg2):
+   - resolves the Fernet key (env value, or HKDF-derived from machine-id with a `WARNING`);
+   - verifies / inserts the `encryption_key_fingerprint` row in `app_state` (mismatch -> `EncryptionKeyMismatchError`, startup aborts);
+   - get-or-creates an encrypted `session_secret` row.
+4. `Database`, `CSRFManager` and `SessionManager` (built from `app_secrets.session_secret`), `DevModeAuthProvider`, `Jinja2Templates` get wired into `app.state`.
+5. `configure_tracing(settings.trace_file)` registers the JSONL exporter (idempotent).
+6. `/static`, `auth_routes`, `dashboard_routes` are mounted/included.
+7. `lifespan` ensures `Database.close()` runs on shutdown.
+
+See `.agent_docs/secrets_bootstrap.md` for the full bootstrap contract.
 
 ## Auth flow (US-001)
 
@@ -41,6 +45,6 @@ PostgreSQL 14+  (users, sessions)
 
 - `AuthProvider` is an ABC; future Google OAuth2 plugs in as another implementation. Routes never import the dev provider.
 - Session cookies hold the *signed* session UUID; the row in `sessions` is the source of truth for expiry.
-- CSRF and session signers share `LCNC_A2A_SESSION_SECRET` but use different `salt` values, so tokens cannot be cross-cast.
+- CSRF and session signers share the bootstrapped `session_secret` (DB-stored, encrypted) but use different `salt` values, so tokens cannot be cross-cast.
 - The JSONL OTel exporter writes to `LCNC_A2A_TRACE_FILE` and redacts `api_key`, `authorization`, `password`, `token`, `cookie`, `set-cookie`, `llm.prompt`, `llm.response` (case-insensitive key match).
 - `themes/` exposes `G100_TOKENS` (dark, default) and `G10_TOKENS` (light), both `ThemeTokens` instances; field names match the sibling `web-a2a` so styling code is portable.

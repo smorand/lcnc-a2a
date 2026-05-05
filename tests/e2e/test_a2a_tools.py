@@ -12,10 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from lcnc_a2a.executors import simple as simple_executor
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    artifact_text,
+    event_reason,
+    event_state,
     fetch_messages,
     fetch_runs_for_agent,
     fetch_steps,
     install_llm_mock,
+    is_artifact_event,
     make_a2a_envelope,
     post_a2a,
     seed_mcp_server_with_cache,
@@ -152,9 +156,9 @@ async def test_e2e_049_simple_with_one_tool_call(
         body=make_a2a_envelope("What is 2+3?"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
-    artifacts = [e for e in events if e.get("event") == "TaskArtifactUpdate"]
-    rendered = "".join(part.get("text", "") for a in artifacts for part in a["artifact"]["parts"])
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
+    artifacts = [e for e in events if is_artifact_event(e)]
+    rendered = "".join(artifact_text(a) for a in artifacts)
     assert rendered == "The answer is 5"
 
     # MCP fixture recorded exactly one call.
@@ -226,7 +230,7 @@ async def test_e2e_053_tool_failure_3_attempts_then_continue(
         body=make_a2a_envelope("call flaky"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     assert flaky_log.exists()
     assert flaky_log.read_text().count("call") == 3
@@ -279,11 +283,8 @@ async def test_e2e_054_simple_defensive_cap_50_iterations(
         body=make_a2a_envelope("infinite tool"),
     )
     assert status == 200, events
-    assert events[-1] == {
-        "event": "TaskStatusUpdate",
-        "state": "failed",
-        "reason": "guardrail_exceeded",
-    }
+    assert event_state(events[-1]) == "TASK_STATE_FAILED"
+    assert event_reason(events[-1]) == "guardrail_exceeded"
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "failed"
     assert runs[0]["stop_reason"] == "guardrail_exceeded"

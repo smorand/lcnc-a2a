@@ -12,20 +12,22 @@ Tech: Python 3.13, FastAPI, async SQLAlchemy + asyncpg + PostgreSQL 14+, Alembic
 make sync          # Install deps with uv
 make db-migrate    # alembic upgrade head
 make db-reset      # Drop+recreate dev DB and re-migrate (DEV ONLY)
-make run-frontend  # uvicorn on http://localhost:8000
+make run-frontend  # uvicorn on http://localhost:8001
 make test          # pytest (US-001 acceptance tests)
 make lint / make format / make typecheck
 make check         # lint + format-check + typecheck + test
 ```
 
-Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SECRET`. Optional: `TRACE_FILE` (defaults to `traces/lcnc-a2a.jsonl`).
+Required env (prefix `LCNC_A2A_`): `DATABASE_URL`. Optional: `ENCRYPTION_KEY` (auto-derived from machine-id on macOS/Linux with a WARNING if absent; **must** be set in cloud/distributed deployments), `TRACE_FILE` (defaults to `traces/lcnc-a2a.jsonl`). The session secret is bootstrapped in DB on first boot (encrypted with the encryption key); never set via env.
 
 ## Project Structure
 
-- `src/lcnc_a2a/main.py` - FastAPI app factory, startup encryption-key check, lifespan, console entry point
-- `src/lcnc_a2a/settings.py` - pydantic-settings `Settings` (incl. `metrics_window_days`)
+- `src/lcnc_a2a/main.py` - FastAPI app factory, calls `bootstrap_secrets`, lifespan, console entry point
+- `src/lcnc_a2a/settings.py` - pydantic-settings `Settings` (`encryption_key` is optional; no `session_secret` field)
 - `src/lcnc_a2a/db.py` - async engine and session factory
-- `src/lcnc_a2a/crypto.py` - Fernet `CryptoService` + `LCNC_A2A_ENCRYPTION_KEY is required` startup error
+- `src/lcnc_a2a/crypto.py` - Fernet `CryptoService` (no startup logic)
+- `src/lcnc_a2a/crypto_machine.py` - HKDF-SHA256 derivation of a Fernet key from macOS `IOPlatformUUID` / Linux `/etc/machine-id` (dev fallback)
+- `src/lcnc_a2a/services/app_secrets.py` - `bootstrap_secrets` (sync psycopg2): resolves env-or-derived encryption key, stores+verifies fingerprint in `app_state`, get-or-creates encrypted `session_secret`
 - `src/lcnc_a2a/deps.py` - FastAPI dependencies (DB, CSRF, sessions, templates, settings, crypto, ...)
 - `src/lcnc_a2a/auth/` - `AuthProvider` ABC, `DevModeAuthProvider`, signed session cookies, CSRF tokens, `fetch_current_user`
 - `src/lcnc_a2a/models/` - SQLAlchemy 2.x ORM (`User`, `Session`, `Agent`, `AgentApiKey`, `AgentRun`, `AgentRunStep`, `AgentMcpServer`, `AgentContext`, `AgentMessage`)
@@ -52,6 +54,7 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `alembic/versions/0002_agents_keys_runs.py` - agents, agent_api_keys, agent_runs schema
 - `alembic/versions/0003_lifecycle_cascade_tables.py` - agent_mcp_servers, agent_contexts, agent_messages, agent_run_steps (final schema; populated in US-004/US-005)
 - `alembic/versions/0004_agent_runs_full_schema.py` - extends agent_runs with context_id, a2a_task_id, stop_reason, completed_at, plan, final_answer, config_snapshot
+- `alembic/versions/0005_app_state.py` - generic key/value table holding the encryption-key fingerprint and the encrypted session_secret bootstrapped at startup
 - `tests/conftest.py` - test env, schema setup (sync), per-test TRUNCATE, ASGI httpx client, `login_as`, `seed_*` helpers
 - `tests/e2e/fixtures/` - fake MCP stdio servers (`fake_mcp_stdio.py`, `fake_mcp_hang.py`, `fake_mcp_fail.py`)
 - `tests/e2e/_mcp_http_helpers.py` - respx helpers for streamable-HTTP MCP mocking
@@ -89,3 +92,4 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`, `ENCRYPTION_KEY`, `SESSION_SE
 - `.agent_docs/react_executor.md` - US-006 ReAct loop, similarity stop, guardrails, embedding retry
 - `.agent_docs/plan_execute_executor.md` - US-007 planner + stage-parallel executor + replan + synthesis
 - `.agent_docs/runs_history_ui.md` - US-008 runs history page, expand partial, 4 KB truncation rule
+- `.agent_docs/secrets_bootstrap.md` - encryption key resolution, machine-id fallback, fingerprint check, session_secret bootstrap

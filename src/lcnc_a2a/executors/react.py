@@ -12,8 +12,6 @@ import httpx
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lcnc_a2a.a2a.envelope import task_artifact_update, task_status_update
-from lcnc_a2a.a2a.sse import encode_sse_event
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
@@ -95,6 +93,7 @@ class ReActExecutor:
         """Execute the ReAct loop and yield SSE event bytes."""
         cancel_event = ctx.cancellation
         cancelled = False
+        emitter = ctx.emitter
 
         try:
             await messages_service.append_message(
@@ -116,12 +115,12 @@ class ReActExecutor:
                 loops=0,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("working"))
-            yield encode_sse_event(task_status_update("failed", reason="context_full"))
+            yield emitter.working()
+            yield emitter.failed(reason="context_full")
             return
         await self._db.commit()
 
-        yield encode_sse_event(task_status_update("working"))
+        yield emitter.working()
 
         snapshot = ctx.run.config_snapshot if isinstance(ctx.run.config_snapshot, dict) else {}
         system_prompt = snapshot.get("system_prompt") or None
@@ -205,7 +204,7 @@ class ReActExecutor:
                         loops=loops,
                     )
                     await self._db.commit()
-                    yield encode_sse_event(task_status_update("failed", reason="llm_provider_error"))
+                    yield emitter.failed(reason="llm_provider_error")
                     return
 
                 total_tokens_in += response.tokens_in
@@ -263,14 +262,14 @@ class ReActExecutor:
                         loops=loops,
                     )
                     await self._db.commit()
-                    yield encode_sse_event(task_artifact_update(final_text))
-                    yield encode_sse_event(task_status_update("completed"))
+                    yield emitter.artifact(final_text)
+                    yield emitter.completed()
                     return
 
                 # tool_call branch
                 candidate_text = outcome.thought
-                yield encode_sse_event(task_status_update("working", payload={"loop": loop_index, "phase": "thought"}))
-                yield encode_sse_event(task_status_update("working", payload={"loop": loop_index, "phase": "action"}))
+                yield emitter.working(metadata={"loop": loop_index, "phase": "thought"})
+                yield emitter.working(metadata={"loop": loop_index, "phase": "action"})
 
                 # Similarity check fires only from iter 2 onwards.
                 similarity_value: float | None = None
@@ -315,7 +314,7 @@ class ReActExecutor:
                             loops=loops,
                         )
                         await self._db.commit()
-                        yield encode_sse_event(task_status_update("failed", reason="embedding_unavailable"))
+                        yield emitter.failed(reason="embedding_unavailable")
                         return
 
                 run_seq += 1
@@ -368,8 +367,8 @@ class ReActExecutor:
                         loops=loops,
                     )
                     await self._db.commit()
-                    yield encode_sse_event(task_artifact_update(final_text))
-                    yield encode_sse_event(task_status_update("completed"))
+                    yield emitter.artifact(final_text)
+                    yield emitter.completed()
                     return
 
                 # Run tool calls (with FR-018 retry).
@@ -401,9 +400,7 @@ class ReActExecutor:
                 if cancelled:
                     break
 
-                yield encode_sse_event(
-                    task_status_update("working", payload={"loop": loop_index, "phase": "observation"})
-                )
+                yield emitter.working(metadata={"loop": loop_index, "phase": "observation"})
                 await self._db.commit()
 
                 prev_candidate_text = candidate_text
@@ -430,7 +427,7 @@ class ReActExecutor:
                     await self._db.rollback()
 
         if cancelled:
-            yield encode_sse_event(task_status_update("cancelled"))
+            yield emitter.canceled()
             return
 
         if stop_reason_pending is not None:
@@ -453,7 +450,7 @@ class ReActExecutor:
                     loops=loops,
                 )
                 await self._db.commit()
-                yield encode_sse_event(task_status_update("failed", reason="guardrail_exceeded_no_synthesis"))
+                yield emitter.failed(reason="guardrail_exceeded_no_synthesis")
                 return
 
             try:
@@ -480,7 +477,7 @@ class ReActExecutor:
                     loops=loops,
                 )
                 await self._db.commit()
-                yield encode_sse_event(task_status_update("failed", reason="llm_provider_error"))
+                yield emitter.failed(reason="llm_provider_error")
                 return
 
             total_tokens_in += synth_response.tokens_in
@@ -517,8 +514,8 @@ class ReActExecutor:
                 loops=loops,
             )
             await self._db.commit()
-            yield encode_sse_event(task_artifact_update(final_text))
-            yield encode_sse_event(task_status_update("completed"))
+            yield emitter.artifact(final_text)
+            yield emitter.completed()
             return
 
     async def _embed_text(

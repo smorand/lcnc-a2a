@@ -1,0 +1,156 @@
+{# Shared body for new/edit agent forms.
+   Inputs:
+     - form: dict of current values (string-typed)
+     - is_edit: bool (defaults to False)
+     - model_preset: string preset name (computed by route, defaults to "openrouter")
+#}
+{% set is_edit = is_edit|default(false) %}
+{% set preset_value = model_preset|default("openrouter") %}
+
+<div class="form-section">
+  <h2 class="form-section__title">Identity</h2>
+  <div class="form-grid">
+    <div class="form-row">
+      <div class="label-row">
+        <label class="label" for="name">Name</label>
+        <span class="char-counter" data-char-counter="name"></span>
+      </div>
+      <input class="input" id="name" name="name" value="{{ form.name|default('', true) }}" maxlength="120" required>
+      <p class="form-row__hint">Required, 1 to 120 characters; unique per user.</p>
+    </div>
+
+    <div class="form-row">
+      <div class="label-row">
+        <label class="label label-with-tip" for="mode">
+          Mode
+          <span class="tooltip" tabindex="0" data-tip="simple : single LLM call, optionally with tools.&#10;react : iterative reason+act loop with similarity stop and guardrails.&#10;plan_execute : planner JSON, stage-parallel executor, bounded replans.">i</span>
+        </label>
+      </div>
+      <select class="select" id="mode" name="mode">
+        {% for m in ["simple", "react", "plan_execute"] %}
+          <option value="{{ m }}" {% if form.mode == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-row form-row--full">
+      <div class="label-row">
+        <label class="label" for="description">Description</label>
+        <span class="char-counter" data-char-counter="description"></span>
+      </div>
+      <textarea class="textarea" id="description" name="description" maxlength="2000">{{ form.description|default('', true) }}</textarea>
+      <p class="form-row__hint">Optional, up to 2000 characters.</p>
+    </div>
+  </div>
+</div>
+
+<div class="form-section">
+  <h2 class="form-section__title">Model</h2>
+  <div class="form-grid">
+    <div class="form-row">
+      <label class="label" for="model_preset">Preset</label>
+      <select class="select" id="model_preset" name="model_preset">
+        <option value="openrouter" {% if preset_value == "openrouter" %}selected{% endif %}>OpenRouter</option>
+        <option value="localhost"  {% if preset_value == "localhost"  %}selected{% endif %}>Localhost (mlx_lm)</option>
+        <option value="other"      {% if preset_value == "other"      %}selected{% endif %}>Other (OpenAI-compatible)</option>
+      </select>
+      <p class="form-row__hint">Selects the provider type and prefills the endpoint.</p>
+    </div>
+
+    <div class="form-row">
+      <label class="label" for="model_id">Model ID</label>
+      <input class="input" id="model_id" name="model_id" value="{{ form.model_id|default('', true) }}" maxlength="200" required>
+      <p class="form-row__hint">e.g. <code>anthropic/claude-sonnet-4-5</code>, <code>mlx-community/Qwen3.6-27B-4bit</code>.</p>
+    </div>
+
+    <input type="hidden" id="model_provider" name="model_provider" value="{{ form.model_provider|default('openrouter', true) }}">
+
+    <div class="form-row form-row--full">
+      <label class="label" for="model_endpoint">Endpoint URL</label>
+      <input class="input" id="model_endpoint" name="model_endpoint" value="{{ form.model_endpoint|default('https://openrouter.ai/api/v1', true) }}">
+    </div>
+
+    <div class="form-row form-row--full" data-api-key-row>
+      <div class="api-key-row">
+        <div class="api-key-source-col" data-api-key-source>
+          <span class="label">API key source</span>
+          <div class="radio-group">
+            {% set source = form.api_key_source|default('input', true) %}
+            <label class="radio-option">
+              <input type="radio" name="api_key_source" value="input" {% if source == 'input' %}checked{% endif %}>
+              <span>Type on the right</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="api_key_source" value="env_snapshot" {% if source == 'env_snapshot' %}checked{% endif %}>
+              <span>Snapshot from env at save</span>
+              <span class="radio-option__hint">Resolved once and stored encrypted. Rejected if env var is unset at save.</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="api_key_source" value="env_dynamic" {% if source == 'env_dynamic' %}checked{% endif %}>
+              <span>Read env at every request</span>
+              <span class="radio-option__hint">Live lookup. The run fails with <code>api_key_env_not_found_at_runtime</code> if the env var is missing.</span>
+            </label>
+          </div>
+          <div class="form-row" data-env-var-name-wrap>
+            <label class="label" for="provider_api_key_env_var_name">Env var name</label>
+            <input class="input" id="provider_api_key_env_var_name"
+                   name="provider_api_key_env_var_name"
+                   value="{{ form.provider_api_key_env_var_name|default('', true) }}"
+                   placeholder="OPENROUTER_API_KEY"
+                   autocomplete="off">
+            <p class="form-row__hint">Required for snapshot or runtime env reads (uppercase, digits and underscore).</p>
+          </div>
+        </div>
+        <div class="api-key-input" data-api-key-wrap>
+          <label class="label" for="provider_api_key">
+            Provider API key{% if is_edit %} (leave blank to keep current){% endif %}
+          </label>
+          <input class="input" id="provider_api_key" name="provider_api_key" type="password" autocomplete="off"
+                 {% if is_edit %}placeholder="********"{% endif %}>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="form-section">
+  <h2 class="form-section__title">Prompts</h2>
+  <div class="form-row" data-show-on-mode="simple,react">
+    <label class="label" for="system_prompt">System prompt (Simple, ReAct)</label>
+    <textarea class="textarea textarea--lg" id="system_prompt" name="system_prompt">{{ form.system_prompt|default('', true) }}</textarea>
+  </div>
+  <div class="form-row" data-show-on-mode="plan_execute">
+    <label class="label" for="planner_prompt">Planner prompt (Plan &amp; Execute)</label>
+    <textarea class="textarea textarea--lg" id="planner_prompt" name="planner_prompt">{{ form.planner_prompt|default('', true) }}</textarea>
+  </div>
+  <div class="form-row" data-show-on-mode="plan_execute">
+    <label class="label" for="executor_prompt">Executor prompt (Plan &amp; Execute)</label>
+    <textarea class="textarea textarea--lg" id="executor_prompt" name="executor_prompt">{{ form.executor_prompt|default('', true) }}</textarea>
+  </div>
+</div>
+
+<div class="form-section">
+  <h2 class="form-section__title">Guardrails</h2>
+  <div class="form-grid">
+    <div class="form-row">
+      <label class="label" for="max_loops">Max loops</label>
+      <input class="input" id="max_loops" name="max_loops" value="{{ form.max_loops|default('30', true) }}">
+      <p class="form-row__hint">Range 1 to 50.</p>
+    </div>
+    <div class="form-row">
+      <label class="label" for="max_tokens">Max tokens</label>
+      <input class="input" id="max_tokens" name="max_tokens" value="{{ form.max_tokens|default('1000000', true) }}">
+      <p class="form-row__hint">Range 100 to 1 000 000.</p>
+    </div>
+    <div class="form-row" data-show-on-mode="react">
+      <label class="label" for="similarity_threshold">Similarity threshold (ReAct)</label>
+      <input class="input" id="similarity_threshold" name="similarity_threshold" value="{{ form.similarity_threshold|default('0.85', true) }}">
+      <p class="form-row__hint">Range 0.50 to 0.99; ReAct stops when consecutive thoughts exceed this similarity.</p>
+    </div>
+    <div class="form-row" data-show-on-mode="plan_execute">
+      <label class="label" for="max_steps">Max steps (Plan &amp; Execute)</label>
+      <input class="input" id="max_steps" name="max_steps" value="{{ form.max_steps|default('20', true) }}">
+      <p class="form-row__hint">Range 1 to 50; total steps the planner may produce across all replans.</p>
+    </div>
+  </div>
+</div>

@@ -22,6 +22,14 @@ class CancellationRegistry:
     def unregister(self, run_id: uuid.UUID) -> None:
         self._events.pop(run_id, None)
 
+    def cancel(self, run_id: uuid.UUID) -> bool:
+        """Signal cancellation for ``run_id``; return ``True`` if a run was active."""
+        event = self._events.get(run_id)
+        if event is None:
+            return False
+        event.set()
+        return True
+
     def cancel_all_for_agent(self, run_ids: list[uuid.UUID]) -> None:
         for run_id in run_ids:
             event = self._events.get(run_id)

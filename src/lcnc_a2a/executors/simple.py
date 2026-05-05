@@ -10,8 +10,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lcnc_a2a.a2a.envelope import task_artifact_update, task_status_update
-from lcnc_a2a.a2a.sse import encode_sse_event
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import ExecutorContext, parse_tool_arguments
 from lcnc_a2a.llm.provider import ChatResponse, LlmProvider, LlmProviderError
@@ -40,6 +38,7 @@ class SimpleExecutor:
         """Drive a Simple-mode run; yield SSE event bytes for the response stream."""
         cancelled = False
         cancel_event = ctx.cancellation
+        emitter = ctx.emitter
         # Persist user message first (may raise context_full).
         try:
             await messages_service.append_message(
@@ -61,12 +60,12 @@ class SimpleExecutor:
                 loops=0,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("working"))
-            yield encode_sse_event(task_status_update("failed", reason="context_full"))
+            yield emitter.working()
+            yield emitter.failed(reason="context_full")
             return
         await self._db.commit()
 
-        yield encode_sse_event(task_status_update("working"))
+        yield emitter.working()
 
         snapshot = ctx.run.config_snapshot or {}
         system_prompt = snapshot.get("system_prompt") if isinstance(snapshot, dict) else None
@@ -108,7 +107,7 @@ class SimpleExecutor:
                         loops=loops,
                     )
                     await self._db.commit()
-                    yield encode_sse_event(task_status_update("failed", reason="guardrail_exceeded"))
+                    yield emitter.failed(reason="guardrail_exceeded")
                     return
 
                 persisted = await messages_service.list_messages(self._db, context_id=ctx.context_id)
@@ -150,7 +149,7 @@ class SimpleExecutor:
                             loops=loops,
                         )
                         await self._db.commit()
-                        yield encode_sse_event(task_status_update("failed", reason="llm_provider_error"))
+                        yield emitter.failed(reason="llm_provider_error")
                         return
 
                 if cancel_event.is_set():
@@ -193,8 +192,8 @@ class SimpleExecutor:
                         loops=loops,
                     )
                     await self._db.commit()
-                    yield encode_sse_event(task_artifact_update(final_text))
-                    yield encode_sse_event(task_status_update("completed"))
+                    yield emitter.artifact(final_text)
+                    yield emitter.completed()
                     return
 
                 # Tool-call branch.
@@ -244,6 +243,22 @@ class SimpleExecutor:
                         tool_call_id=tool_call_id,
                     )
                 await self._db.commit()
+
+                if total_tokens_out >= max_tokens:
+                    await runs_service.finalize_run(
+                        self._db,
+                        run_id=ctx.run.id,
+                        status="failed",
+                        stop_reason="max_tokens",
+                        final_answer=None,
+                        tokens_in=total_tokens_in,
+                        tokens_out=total_tokens_out,
+                        cost_usd=total_cost,
+                        loops=loops,
+                    )
+                    await self._db.commit()
+                    yield emitter.failed(reason="max_tokens")
+                    return
         finally:
             if cancelled:
                 await runs_service.finalize_run(
@@ -263,7 +278,7 @@ class SimpleExecutor:
                     await self._db.rollback()
 
         if cancelled:
-            yield encode_sse_event(task_status_update("cancelled"))
+            yield emitter.canceled()
 
     def _collect_tools(self, ctx: ExecutorContext) -> list[dict[str, Any]]:
         """Flatten ``tools_cache`` across all attached MCP servers."""

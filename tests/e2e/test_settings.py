@@ -2,30 +2,29 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-from pathlib import Path
+import logging
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from lcnc_a2a.services.app_secrets import bootstrap_secrets
 
 
-def test_e2e_096_missing_encryption_key_blocks_startup() -> None:
-    """E2E-096: app refuses to start if LCNC_A2A_ENCRYPTION_KEY is unset."""
-    env = {k: v for k, v in os.environ.items() if k != "LCNC_A2A_ENCRYPTION_KEY"}
-    env.setdefault("LCNC_A2A_DATABASE_URL", "postgresql+asyncpg://postgres@localhost:5432/lcnc_a2a")
-    env.setdefault("LCNC_A2A_SESSION_SECRET", "test-session-secret")
+async def test_e2e_096_missing_encryption_key_uses_machine_fallback(
+    db_engine: AsyncEngine,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """E2E-096 (amended 2026-05-03): without LCNC_A2A_ENCRYPTION_KEY the app starts and logs a warning.
 
-    result = subprocess.run(
-        [sys.executable, "-c", "import lcnc_a2a.main"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        env=env,
-        cwd=str(REPO_ROOT),
-    )
+    Original spec contract: 'startup blocked'. Amended to support a
+    machine-id-derived fallback for dev convenience. The warning must always be
+    emitted so operators do not deploy in this state by accident.
+    """
+    async_url = str(db_engine.url.render_as_string(hide_password=False))
 
-    assert result.returncode != 0, (
-        f"expected non-zero exit, got {result.returncode}\nstdout={result.stdout}\nstderr={result.stderr}"
-    )
-    assert "LCNC_A2A_ENCRYPTION_KEY is required" in result.stderr
+    with caplog.at_level(logging.WARNING, logger="lcnc_a2a.services.app_secrets"):
+        secrets = bootstrap_secrets(database_url=async_url, env_encryption_key=None)
+
+    assert secrets.derived_from_machine is True
+    assert secrets.session_secret  # generated and decoded
+    assert any("machine-derived encryption key" in r.message.lower() for r in caplog.records)

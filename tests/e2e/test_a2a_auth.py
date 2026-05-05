@@ -22,7 +22,7 @@ async def test_e2e_050_post_without_bearer_returns_401(
     user_id = await seed_user("alice@example.com", "Alice")
     agent_id, _ = await seed_started_agent(db_engine, user_id=user_id, name="agent-A")
     response = await http_client.post(
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi"),
     )
     assert response.status_code == 401
@@ -40,7 +40,7 @@ async def test_e2e_051_key_from_other_agent_returns_403(
     agent1_id, _key1 = await seed_started_agent(db_engine, user_id=user_id, name="agent-A1")
     _agent2_id, key2 = await seed_started_agent(db_engine, user_id=user_id, name="agent-A2")
     response = await http_client.post(
-        f"/agents/{agent1_id}",
+        f"/agents/{agent1_id}/message:stream",
         json=make_a2a_envelope("hi"),
         headers={"Authorization": f"Bearer {key2}"},
     )
@@ -59,7 +59,7 @@ async def test_e2e_094_cross_user_isolation_via_api_key(
     agent_a_id, _ = await seed_started_agent(db_engine, user_id=alice_id, name="agent-A")
     _agent_b_id, key_b = await seed_started_agent(db_engine, user_id=bob_id, name="agent-B")
     response = await http_client.post(
-        f"/agents/{agent_a_id}",
+        f"/agents/{agent_a_id}/message:stream",
         json=make_a2a_envelope("hi"),
         headers={"Authorization": f"Bearer {key_b}"},
     )
@@ -81,7 +81,7 @@ async def test_e2e_089_anonymous_to_stopped_returns_401(
             {"id": agent_id},
         )
     response = await http_client.post(
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi"),
     )
     assert response.status_code == 401
@@ -106,7 +106,7 @@ async def test_e2e_095_constant_time_api_key_comparison(
         target = other_first if i % 2 == 0 else other_last
         start = time.perf_counter()
         response = await http_client.post(
-            f"/agents/{agent_id}",
+            f"/agents/{agent_id}/message:stream",
             json=make_a2a_envelope("hi"),
             headers={"Authorization": f"Bearer {target}"},
         )

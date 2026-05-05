@@ -24,8 +24,6 @@ PG_USER = os.environ.get("LCNC_A2A_TEST_PG_USER") or getpass.getuser()
 ASYNC_URL = f"postgresql+asyncpg://{PG_USER}@localhost:5432/{TEST_DB_NAME}"
 SYNC_URL = f"postgresql+psycopg2://{PG_USER}@localhost:5432/{TEST_DB_NAME}"
 
-CARBON_REFERENCE = REPO_ROOT / "src" / "lcnc_a2a" / "static" / "css" / "carbon.css"
-
 
 def _generate_fernet_key() -> str:
     return Fernet.generate_key().decode()
@@ -36,8 +34,9 @@ def _set_test_env() -> Iterator[None]:
     """Populate the env that ``Settings()`` and ``main`` need."""
     os.environ["LCNC_A2A_DATABASE_URL"] = ASYNC_URL
     os.environ.setdefault("LCNC_A2A_ENCRYPTION_KEY", _generate_fernet_key())
-    os.environ.setdefault("LCNC_A2A_SESSION_SECRET", "test-session-secret")
     os.environ.setdefault("LCNC_A2A_TRACE_FILE", str(REPO_ROOT / "traces" / "test.jsonl"))
+    # session_secret is now bootstrapped from the DB; never set via env.
+    os.environ.pop("LCNC_A2A_SESSION_SECRET", None)
     yield
 
 
@@ -64,7 +63,7 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
             text(
                 "TRUNCATE TABLE agent_messages, agent_contexts, agent_run_steps, "
                 "agent_runs, agent_mcp_servers, agent_api_keys, agents, sessions, "
-                "users RESTART IDENTITY CASCADE"
+                "users, app_state RESTART IDENTITY CASCADE"
             )
         )
     yield engine
@@ -105,9 +104,15 @@ async def csrf_token(http_client: httpx.AsyncClient) -> str:
 
 
 @pytest.fixture
-def carbon_reference_bytes() -> int:
-    """Byte length of the reference carbon.css copy."""
-    return CARBON_REFERENCE.stat().st_size
+def app_css_path() -> Path:
+    """Path to the structural app stylesheet served at /static/css/app.css."""
+    return REPO_ROOT / "src" / "lcnc_a2a" / "static" / "css" / "app.css"
+
+
+@pytest.fixture
+def theme_css_dir() -> Path:
+    """Directory containing the theme stylesheets served at /static/css/themes/."""
+    return REPO_ROOT / "src" / "lcnc_a2a" / "static" / "css" / "themes"
 
 
 LoginFixture = Callable[..., Awaitable[httpx.AsyncClient]]

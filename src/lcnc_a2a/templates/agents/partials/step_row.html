@@ -12,7 +12,7 @@
         {% if srow.args_truncated %}
           <button
             type="button"
-            class="cds--btn cds--btn--ghost view-full-btn"
+            class="btn btn--ghost btn--sm view-full-btn"
             hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
             hx-target="#step-{{ step.id }}-args"
             hx-swap="innerHTML"
@@ -29,7 +29,7 @@
         {% if srow.result_truncated %}
           <button
             type="button"
-            class="cds--btn cds--btn--ghost view-full-btn"
+            class="btn btn--ghost btn--sm view-full-btn"
             hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
             hx-target="#step-{{ step.id }}-result"
             hx-swap="innerHTML"

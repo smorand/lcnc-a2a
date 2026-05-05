@@ -9,6 +9,7 @@ from lcnc_a2a.models.agent_mcp_server import AgentMcpServer
 from lcnc_a2a.models.agent_message import AgentMessage
 from lcnc_a2a.models.agent_run import AgentRun
 from lcnc_a2a.models.agent_run_step import AgentRunStep
+from lcnc_a2a.models.app_state import AppState
 from lcnc_a2a.models.base import Base
 from lcnc_a2a.models.session import Session
 from lcnc_a2a.models.user import User
@@ -21,6 +22,7 @@ __all__ = [
     "AgentMessage",
     "AgentRun",
     "AgentRunStep",
+    "AppState",
     "Base",
     "Session",
     "User",

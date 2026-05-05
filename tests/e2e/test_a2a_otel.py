@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_state,
     install_llm_mock,
     make_a2a_envelope,
     post_a2a,
@@ -65,7 +66,7 @@ async def test_e2e_057_trace_redaction(
             body=make_a2a_envelope(f"prompt with {PROMPT_TOKEN}"),
         )
     assert status == 200
-    assert events[-1]["state"] == "completed"
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     # Force flush of the BatchSpanProcessor
     from opentelemetry import trace

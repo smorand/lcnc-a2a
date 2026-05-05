@@ -1,67 +1,119 @@
 {% extends "base.html" %}
-{% block title %}{{ agent.name }} - LCNC A2A Builder{% endblock %}
+{% block title %}{{ agent.name }} — LCNC A2A Builder{% endblock %}
+{% block head %}<script src="/static/js/agent_endpoints.js" defer></script>{% endblock %}
 {% block content %}
-<section class="cds--agent-detail">
-  <h1 class="cds--type-productive-heading-04">{{ agent.name }}</h1>
-  <p class="cds--type-body-long-01">Mode: {{ agent.mode }} · Model: {{ agent.model_id }} · Status: {{ agent.status }}</p>
-
-  <div class="cds--agent-lifecycle">
-    <a class="cds--btn cds--btn--secondary" href="/agents/{{ agent.id }}/edit">Edit</a>
-    {% if agent.status == "started" %}
-      <form method="post" action="/agents/{{ agent.id }}/stop" style="display:inline">
+<section class="app-page">
+  <header class="app-page-header">
+    <div class="app-page-title">
+      <h1>{{ agent.name }}</h1>
+      <p class="app-page-title__subtitle">
+        Mode <code>{{ agent.mode }}</code> · Model <code>{{ agent.model_id }}</code> ·
+        Status <span class="badge badge--{{ agent.status }}">{{ agent.status }}</span>
+      </p>
+    </div>
+    <div class="app-page-actions">
+      <a class="btn btn--secondary" href="/agents/{{ agent.id }}/edit">Edit</a>
+      <a class="btn btn--ghost" href="/agents/{{ agent.id }}/runs">Runs</a>
+      {% if agent.status == "started" %}
+        <form method="post" action="/agents/{{ agent.id }}/stop" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--secondary" type="submit">Stop</button>
+        </form>
+      {% else %}
+        <form method="post" action="/agents/{{ agent.id }}/start" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn--primary" type="submit">Start</button>
+        </form>
+      {% endif %}
+      <form method="post" action="/agents/{{ agent.id }}" style="display:inline" onsubmit="return confirm('Delete this agent? All keys, runs and contexts will be removed.');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="cds--btn cds--btn--secondary" type="submit">Stop</button>
+        <input type="hidden" name="_method" value="DELETE">
+        <button class="btn btn--danger" type="submit">Delete</button>
       </form>
-    {% else %}
-      <form method="post" action="/agents/{{ agent.id }}/start" style="display:inline">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="cds--btn cds--btn--primary" type="submit">Start</button>
-      </form>
-    {% endif %}
-    <form method="post" action="/agents/{{ agent.id }}" style="display:inline" onsubmit="return confirm('Delete this agent? All keys, runs and contexts will be removed.');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="_method" value="DELETE">
-      <button class="cds--btn cds--btn--danger" type="submit">Delete</button>
-    </form>
-  </div>
+    </div>
+  </header>
 
   {% if one_time_key %}
     {% include "agents/partials/api_key_once.html" with context %}
   {% endif %}
 
-  <h2 class="cds--type-productive-heading-03">Configuration</h2>
-  <dl class="cds--definition-list">
-    <dt>Provider</dt><dd>{{ agent.model_provider }}</dd>
-    <dt>Endpoint</dt><dd>{{ agent.model_endpoint }}</dd>
-    <dt>Provider API key</dt><dd>********</dd>
-    {% if agent.description %}<dt>Description</dt><dd>{{ agent.description }}</dd>{% endif %}
-    <dt>Max loops</dt><dd>{{ agent.max_loops }}</dd>
-    <dt>Max tokens</dt><dd>{{ agent.max_tokens }}</dd>
-    {% if agent.similarity_threshold is not none %}
-      <dt>Similarity threshold</dt><dd>{{ agent.similarity_threshold }}</dd>
-    {% endif %}
-    {% if agent.max_steps is not none %}
-      <dt>Max steps</dt><dd>{{ agent.max_steps }}</dd>
-    {% endif %}
-  </dl>
+  <div
+    class="card"
+    data-a2a-endpoints
+    data-agent-id="{{ agent.id }}"
+    data-csrf-token="{{ csrf_token }}"
+  >
+    <div class="card__header"><h2 class="card__title">A2A endpoint</h2></div>
+    <dl class="kv-list">
+      <dt>Base URL</dt>
+      <dd>
+        <span class="endpoint-row">
+          <code class="endpoint-row__url" data-endpoint="base"></code>
+          <button type="button" class="btn btn--ghost btn--sm" data-copy-target="base">Copy</button>
+        </span>
+      </dd>
+      <dt>
+        API key
+        <span
+          class="tooltip"
+          tabindex="0"
+          data-tip="Send this key in an HTTP header:&#10;Authorization: Bearer &lt;API_KEY&gt;&#10;to authenticate calls to the agent."
+        >i</span>
+      </dt>
+      <dd>
+        <span class="endpoint-row">
+          <code class="endpoint-row__url" data-endpoint="api-key">********</code>
+          <button
+            type="button"
+            class="btn btn--ghost btn--sm"
+            data-copy-target="api-key"
+            title="Mints a fresh key and copies it to your clipboard."
+          >Copy</button>
+        </span>
+      </dd>
+    </dl>
+  </div>
 
-  <h2 class="cds--type-productive-heading-03">API keys</h2>
-  <table class="cds--data-table">
-    <thead>
-      <tr><th>Label</th><th>Last 4</th><th>Created</th><th>Status</th></tr>
-    </thead>
-    <tbody>
-      {% for key in keys %}
-        <tr class="api-key-row" data-key-id="{{ key.id }}">
-          <td>{{ key.label }}</td>
-          <td>{{ key.key_last4 }}</td>
-          <td>{{ key.created_at.isoformat() }}</td>
-          <td>{% if key.revoked_at %}revoked{% else %}active{% endif %}</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">Configuration</h2></div>
+    <dl class="kv-list">
+      <dt>Preset</dt><dd>{{ model_preset_label }}</dd>
+      <dt>Model ID</dt><dd><code>{{ agent.model_id }}</code></dd>
+      <dt>Endpoint</dt><dd><code>{{ agent.model_endpoint }}</code></dd>
+      <dt>Provider API key</dt><dd>********</dd>
+      {% if agent.description %}<dt>Description</dt><dd>{{ agent.description }}</dd>{% endif %}
+      <dt>Max loops</dt><dd>{{ agent.max_loops }}</dd>
+      <dt>Max tokens</dt><dd>{{ agent.max_tokens }}</dd>
+      {% if agent.similarity_threshold is not none %}
+        <dt>Similarity threshold</dt><dd>{{ agent.similarity_threshold }}</dd>
+      {% endif %}
+      {% if agent.max_steps is not none %}
+        <dt>Max steps</dt><dd>{{ agent.max_steps }}</dd>
+      {% endif %}
+    </dl>
+  </div>
 
-  <a class="cds--link" href="/agents">Back to dashboard</a>
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">API keys</h2></div>
+    {% if keys %}
+      <table class="data-table">
+        <thead>
+          <tr><th>Label</th><th>Last 4</th><th>Created</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for key in keys %}
+            <tr class="api-key-row" data-key-id="{{ key.id }}">
+              <td>{{ key.label }}</td>
+              <td><code>{{ key.key_last4 }}</code></td>
+              <td>{{ key.created_at.isoformat() }}</td>
+              <td>{% if key.revoked_at %}<span class="badge">revoked</span>{% else %}<span class="badge badge--running">active</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="app-page-title__subtitle">No API keys yet.</p>
+    {% endif %}
+  </div>
 </section>
 {% endblock %}

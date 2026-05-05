@@ -206,13 +206,17 @@ def make_a2a_envelope(
     context_id: str | None = None,
     task_id: str | None = None,
 ) -> dict[str, Any]:
-    """Build a minimal SendStreamingMessage envelope."""
-    envelope: dict[str, Any] = {"message": {"parts": [{"kind": "text", "text": text}]}}
+    """Build a minimal SendStreamingMessage envelope (spec wire format)."""
+    message: dict[str, Any] = {
+        "messageId": str(uuid.uuid4()),
+        "role": "ROLE_USER",
+        "parts": [{"text": text}],
+    }
     if context_id is not None:
-        envelope["contextId"] = context_id
+        message["contextId"] = context_id
     if task_id is not None:
-        envelope["taskId"] = task_id
-    return envelope
+        message["taskId"] = task_id
+    return {"message": message}
 
 
 async def collect_sse(stream: httpx.Response) -> list[dict[str, Any]]:
@@ -236,13 +240,13 @@ async def post_a2a(
     plain_key: str | None,
     body: dict[str, Any],
 ) -> tuple[int, list[dict[str, Any]] | str, dict[str, str]]:
-    """POST to ``/agents/<id>`` and return ``(status, body_or_events, headers)``."""
+    """POST to ``/agents/<id>/message:stream`` and return ``(status, body_or_events, headers)``."""
     headers: dict[str, str] = {}
     if plain_key is not None:
         headers["Authorization"] = f"Bearer {plain_key}"
     async with client.stream(
         "POST",
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=body,
         headers=headers,
     ) as response:
@@ -324,16 +328,95 @@ async def stream_lines_for_url(
             yield line
 
 
+# ---- SSE event helpers (spec wire format) ------------------------------
+
+
+def is_status_event(event: dict[str, Any]) -> bool:
+    """True for ``TaskStatusUpdateEvent`` SSE payloads."""
+    return isinstance(event, dict) and "statusUpdate" in event
+
+
+def is_artifact_event(event: dict[str, Any]) -> bool:
+    """True for ``TaskArtifactUpdateEvent`` SSE payloads."""
+    return isinstance(event, dict) and "artifactUpdate" in event
+
+
+def is_task_event(event: dict[str, Any]) -> bool:
+    """True for the initial ``Task`` SSE payload."""
+    return isinstance(event, dict) and "task" in event
+
+
+def event_state(event: dict[str, Any]) -> str | None:
+    """Extract ``status.state`` from a TaskStatusUpdateEvent."""
+    update = event.get("statusUpdate") if isinstance(event, dict) else None
+    if not isinstance(update, dict):
+        return None
+    status = update.get("status")
+    if not isinstance(status, dict):
+        return None
+    state = status.get("state")
+    return state if isinstance(state, str) else None
+
+
+def event_reason(event: dict[str, Any]) -> str | None:
+    """Extract the ``reason`` from a TaskStatusUpdateEvent's metadata."""
+    update = event.get("statusUpdate") if isinstance(event, dict) else None
+    if not isinstance(update, dict):
+        return None
+    metadata = update.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    reason = metadata.get("reason")
+    return reason if isinstance(reason, str) else None
+
+
+def event_phase(event: dict[str, Any]) -> str | None:
+    """Extract the ``phase`` metadata from a TaskStatusUpdateEvent."""
+    update = event.get("statusUpdate") if isinstance(event, dict) else None
+    if not isinstance(update, dict):
+        return None
+    metadata = update.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    phase = metadata.get("phase")
+    return phase if isinstance(phase, str) else None
+
+
+def artifact_text(event: dict[str, Any]) -> str:
+    """Concatenate ``text`` parts from a TaskArtifactUpdateEvent."""
+    update = event.get("artifactUpdate") if isinstance(event, dict) else None
+    if not isinstance(update, dict):
+        return ""
+    artifact = update.get("artifact")
+    if not isinstance(artifact, dict):
+        return ""
+    parts = artifact.get("parts")
+    if not isinstance(parts, list):
+        return ""
+    out: list[str] = []
+    for part in parts:
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            out.append(part["text"])
+    return "".join(out)
+
+
 __all__ = [
     "LLM_CHAT_URL",
     "LLM_ENDPOINT",
     "StubLlm",
+    "artifact_text",
     "collect_sse",
+    "event_phase",
+    "event_reason",
+    "event_state",
     "fetch_messages",
     "fetch_run_row",
     "fetch_runs_for_agent",
     "fetch_steps",
     "install_llm_mock",
+    "is_artifact_event",
+    "is_status_event",
+    "is_task_event",
     "make_a2a_envelope",
     "post_a2a",
     "seed_mcp_server_with_cache",

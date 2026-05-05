@@ -1,12 +1,8 @@
-"""Fernet symmetric encryption utility and startup key validation."""
+"""Fernet symmetric encryption utility."""
 
 from __future__ import annotations
 
-import sys
-
 from cryptography.fernet import Fernet, InvalidToken
-
-ENCRYPTION_KEY_REQUIRED_MESSAGE = "LCNC_A2A_ENCRYPTION_KEY is required"
 
 
 class CryptoService:
@@ -33,11 +29,4 @@ class CryptoService:
 
 
 class InvalidEncryptionKeyError(ValueError):
-    """Raised when the encryption key is missing or malformed."""
-
-
-def fail_missing_key() -> None:
-    """Write the required-message to stderr and exit with status 1."""
-    sys.stderr.write(ENCRYPTION_KEY_REQUIRED_MESSAGE + "\n")
-    sys.stderr.flush()
-    sys.exit(1)
+    """Raised when the encryption key is malformed or a token cannot be decrypted."""

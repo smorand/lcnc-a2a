@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_state,
     fetch_runs_for_agent,
     install_llm_mock,
+    is_status_event,
     make_a2a_envelope,
     post_a2a,
     seed_started_agent,
@@ -78,13 +80,13 @@ async def test_e2e_028_stop_does_not_interrupt_in_flight_run(
 
     status, events, _ = await asyncio.wait_for(a2a_task, timeout=5.0)
     assert status == 200
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "completed"
 
     blocked = await http_client.post(
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi again"),
         headers={"Authorization": f"Bearer {plain}"},
     )
@@ -134,8 +136,8 @@ async def test_e2e_033_delete_cancels_in_flight_run(
 
     status, events, _ = await asyncio.wait_for(a2a_task, timeout=5.0)
     assert status == 200
-    assert events[-1]["event"] == "TaskStatusUpdate"
-    assert events[-1]["state"] == "cancelled"
+    assert is_status_event(events[-1])
+    assert event_state(events[-1]) == "TASK_STATE_CANCELED"
 
     async with db_engine.begin() as conn:
         count = (
@@ -187,7 +189,7 @@ async def test_e2e_091_delete_emits_cancelled_envelope(
     release.set()
 
     _status, events, _ = await asyncio.wait_for(a2a_task, timeout=5.0)
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "cancelled"}
+    assert event_state(events[-1]) == "TASK_STATE_CANCELED"
 
 
 @pytest.mark.asyncio
@@ -329,7 +331,7 @@ async def test_e2e_093_concurrent_contexts_isolation(
     )
     for status, events, _ in results:
         assert status == 200
-        assert events[-1]["state"] == "completed"
+        assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     # Each captured request should contain only its own context's prior message.
     captured_contents = [[m.get("content") for m in call["messages"]] for call in stub.calls]

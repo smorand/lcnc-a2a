@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_reason,
+    event_state,
     fetch_runs_for_agent,
     install_llm_mock,
     make_a2a_envelope,
@@ -65,8 +67,5 @@ async def test_e2e_065_embedding_503_three_failures_hard_fail(
     assert len(embed_stub.calls) == 3
 
     last = events[-1]
-    assert last == {
-        "event": "TaskStatusUpdate",
-        "state": "failed",
-        "reason": "embedding_unavailable",
-    }
+    assert event_state(last) == "TASK_STATE_FAILED"
+    assert event_reason(last) == "embedding_unavailable"

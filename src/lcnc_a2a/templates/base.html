@@ -1,20 +1,39 @@
 <!DOCTYPE html>
-<html lang="en" data-carbon-theme="g100">
+<html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}LCNC A2A Builder{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/carbon.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/themes/{{ theme }}.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body class="cds--g100">
-  <header class="cds--header" role="banner">
-    <a class="cds--header__name" href="/agents">LCNC A2A Builder</a>
-    {% block nav %}{% endblock %}
+<body class="app-shell">
+  <header class="app-header" role="banner">
+    <a class="app-header__brand" href="/agents">
+      <span class="app-header__brand-mark"></span>
+      LCNC A2A Builder
+    </a>
+    <nav class="app-header__nav">{% block nav %}
+      {% if user is defined and user %}
+        <a class="app-header__nav-link" href="/agents" {% if request.url.path == "/agents" %}aria-current="page"{% endif %}>Agents</a>
+      {% endif %}
+    {% endblock %}</nav>
+    <div class="app-header__user">
+      {% if user is defined and user %}
+        <span class="app-header__user-email">{{ user.email }}</span>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ new_csrf_token() }}">
+          <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
+        </form>
+      {% endif %}
+    </div>
   </header>
-  <main class="cds--content">
-    {% block content %}{% endblock %}
+  <main class="app-main" role="main">
+    <div class="app-container">
+      {% block content %}{% endblock %}
+    </div>
   </main>
 </body>
 </html>

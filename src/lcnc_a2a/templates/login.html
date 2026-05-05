@@ -1,10 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Sign in - LCNC A2A Builder{% endblock %}
+{% block title %}Sign in — LCNC A2A Builder{% endblock %}
 {% block content %}
-<section class="cds--login">
-  <h1 class="cds--type-productive-heading-04">Sign in</h1>
-  <form method="POST" action="/login" hx-post="/login" hx-target="this" hx-swap="outerHTML">
-    {% include "partials/login_form.html" %}
-  </form>
+<section class="app-container--auth">
+  <div class="card">
+    <div class="card__header">
+      <h1 class="card__title">Sign in</h1>
+    </div>
+    <form method="POST" action="/login" class="form" hx-post="/login" hx-target="this" hx-swap="outerHTML">
+      {% include "partials/login_form.html" %}
+    </form>
+  </div>
 </section>
 {% endblock %}

@@ -1,6 +1,6 @@
 <div class="run-trace-content" data-run-id="{{ run.id }}">
   {% if step_rows %}
-    <table class="cds--data-table run-steps-table">
+    <table class="data-table run-steps-table">
       <thead>
         <tr>
           <th>Seq</th>
@@ -9,13 +9,13 @@
           <th>Content</th>
           <th>Args</th>
           <th>Result</th>
-          <th>Tokens in</th>
-          <th>Tokens out</th>
-          <th>Similarity</th>
+          <th class="num">Tokens in</th>
+          <th class="num">Tokens out</th>
+          <th class="num">Similarity</th>
           <th>Stage</th>
           <th>Step ID</th>
           <th>Step status</th>
-          <th>Duration (ms)</th>
+          <th class="num">Duration (ms)</th>
           <th>Occurred</th>
         </tr>
       </thead>

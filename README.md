@@ -31,11 +31,10 @@ All env vars are prefixed `LCNC_A2A_`.
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `LCNC_A2A_DATABASE_URL` | yes | `postgresql+asyncpg://user@host:5432/db` |
-| `LCNC_A2A_ENCRYPTION_KEY` | yes | Base64 Fernet key (`python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`) |
-| `LCNC_A2A_SESSION_SECRET` | yes | Signing key for session cookies and CSRF tokens |
+| `LCNC_A2A_ENCRYPTION_KEY` | dev: optional, prod: yes | Base64 Fernet key (`python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`). If absent, a stable key is derived from the host machine-id (macOS / Linux) and a `WARNING` is logged. **Never** rely on this fallback in cloud / distributed deployments. |
 | `LCNC_A2A_TRACE_FILE` | no | JSONL OpenTelemetry trace file (default `traces/lcnc-a2a.jsonl`) |
 
-If `LCNC_A2A_ENCRYPTION_KEY` is missing or malformed, the app refuses to start with a non-zero exit code and `LCNC_A2A_ENCRYPTION_KEY is required` on stderr.
+The `session_secret` used by `itsdangerous` to sign cookies and CSRF tokens is **bootstrapped from the database** on first boot (encrypted at rest with the encryption key) and never read from the environment. The encryption key fingerprint is also persisted: if it changes between runs, startup fails with an explicit error to avoid silent decryption failures of agent secrets.
 
 ## Quick start
 
@@ -47,14 +46,14 @@ make sync
 createdb lcnc_a2a
 make db-migrate
 
-# 3. Export env
+# 3. Export env (only DATABASE_URL is required in dev)
 export LCNC_A2A_DATABASE_URL="postgresql+asyncpg://$(whoami)@localhost:5432/lcnc_a2a"
-export LCNC_A2A_ENCRYPTION_KEY="$(uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-export LCNC_A2A_SESSION_SECRET="$(openssl rand -hex 32)"
+# Optional: provide an explicit encryption key (recommended for prod, optional in dev)
+# export LCNC_A2A_ENCRYPTION_KEY="$(uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
 
 # 4. Run
 make run-frontend
-# Open http://localhost:8000
+# Open http://localhost:8001
 ```
 
 ## Development

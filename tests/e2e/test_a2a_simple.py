@@ -12,9 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    artifact_text,
+    event_reason,
+    event_state,
     fetch_messages,
     fetch_runs_for_agent,
     install_llm_mock,
+    is_artifact_event,
+    is_status_event,
     make_a2a_envelope,
     post_a2a,
     seed_started_agent,
@@ -42,12 +47,12 @@ async def test_e2e_048_simple_no_tools_end_to_end(
     )
     assert status == 200, events
     assert headers["content-type"].startswith("text/event-stream")
-    states = [e.get("state") for e in events if e.get("event") == "TaskStatusUpdate"]
-    assert states[0] == "working"
-    assert states[-1] == "completed"
-    artifacts = [e for e in events if e.get("event") == "TaskArtifactUpdate"]
+    states = [event_state(e) for e in events if is_status_event(e)]
+    assert states[0] == "TASK_STATE_WORKING"
+    assert states[-1] == "TASK_STATE_COMPLETED"
+    artifacts = [e for e in events if is_artifact_event(e)]
     assert artifacts, events
-    rendered = "".join(part.get("text", "") for a in artifacts for part in a["artifact"]["parts"])
+    rendered = "".join(artifact_text(a) for a in artifacts)
     assert rendered == "Hello, world."
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
@@ -86,7 +91,7 @@ async def test_e2e_026_post_to_stopped_returns_503(
             {"id": agent_id},
         )
     response = await http_client.post(
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi"),
         headers={"Authorization": f"Bearer {plain}"},
     )
@@ -108,7 +113,7 @@ async def test_e2e_029_503_body_exact(
             {"id": agent_id},
         )
     response = await http_client.post(
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi"),
         headers={"Authorization": f"Bearer {plain}"},
     )
@@ -136,7 +141,7 @@ async def test_e2e_052_llm_500_marks_run_failed(
         body=make_a2a_envelope("hi"),
     )
     assert status == 200
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "failed", "reason": "llm_provider_error"}
+    assert event_state(events[-1]) == "TASK_STATE_FAILED" and event_reason(events[-1]) == "llm_provider_error"
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "failed"
     assert runs[0]["stop_reason"] == "llm_provider_error"
@@ -317,7 +322,7 @@ async def test_e2e_059_hard_cap_emits_context_full(
         body=make_a2a_envelope("Why?", context_id=str(context_id)),
     )
     assert status == 200
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "failed", "reason": "context_full"}
+    assert event_state(events[-1]) == "TASK_STATE_FAILED" and event_reason(events[-1]) == "context_full"
 
     async with db_engine.begin() as conn:
         count = (

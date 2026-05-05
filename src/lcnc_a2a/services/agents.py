@@ -67,6 +67,7 @@ async def create_agent(
     model_endpoint: str,
     model_id: str,
     provider_api_key: str,
+    provider_api_key_env_var: str | None,
     crypto: CryptoService,
     system_prompt: str | None,
     planner_prompt: str | None,
@@ -77,6 +78,9 @@ async def create_agent(
     max_steps: int | None,
 ) -> Agent:
     """Persist a new agent for ``user_id`` with the provider API key encrypted at rest."""
+    encrypted_key: bytes | None = None
+    if provider_api_key:
+        encrypted_key = crypto.encrypt(provider_api_key.encode("utf-8"))
     agent = Agent(
         user_id=user_id,
         name=name,
@@ -85,7 +89,8 @@ async def create_agent(
         model_provider=model_provider,
         model_endpoint=model_endpoint,
         model_id=model_id,
-        provider_api_key_enc=crypto.encrypt(provider_api_key.encode("utf-8")),
+        provider_api_key_enc=encrypted_key,
+        provider_api_key_env_var=provider_api_key_env_var,
         system_prompt=system_prompt or None,
         planner_prompt=planner_prompt or None,
         executor_prompt=executor_prompt or None,
@@ -122,6 +127,7 @@ async def update_agent(
     model_endpoint: str,
     model_id: str,
     provider_api_key: str,
+    provider_api_key_env_var: str | None,
     crypto: CryptoService,
     system_prompt: str | None,
     planner_prompt: str | None,
@@ -131,15 +137,19 @@ async def update_agent(
     similarity_threshold: float | None,
     max_steps: int | None,
 ) -> Agent:
-    """Update an existing agent. Empty ``provider_api_key`` leaves the encrypted bytes unchanged."""
+    """Update an existing agent. Empty ``provider_api_key`` (with no env-var marker) keeps the existing key."""
     agent.name = name
     agent.description = description or None
     agent.mode = mode
     agent.model_provider = model_provider
     agent.model_endpoint = model_endpoint
     agent.model_id = model_id
-    if provider_api_key:
+    if provider_api_key_env_var is not None:
+        agent.provider_api_key_env_var = provider_api_key_env_var
+        agent.provider_api_key_enc = None
+    elif provider_api_key:
         agent.provider_api_key_enc = crypto.encrypt(provider_api_key.encode("utf-8"))
+        agent.provider_api_key_env_var = None
     agent.system_prompt = system_prompt or None
     agent.planner_prompt = planner_prompt or None
     agent.executor_prompt = executor_prompt or None

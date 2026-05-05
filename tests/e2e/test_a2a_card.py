@@ -1,4 +1,9 @@
-"""US-005 acceptance tests for the Agent Card endpoint (E2E-025, 086, 087, 088)."""
+"""US-005 acceptance tests for the Agent Card endpoint (E2E-025, 086, 087, 088).
+
+The Agent Card lives at the spec-canonical path
+``/agents/<id>/.well-known/a2a/agent-card`` and exposes the spec-required
+fields (``id``, ``provider``, ``interfaces`` ...).
+"""
 
 from __future__ import annotations
 
@@ -10,6 +15,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import seed_started_agent
+
+CARD_PATH = "/.well-known/a2a/agent-card"
 
 
 @pytest.mark.asyncio
@@ -26,19 +33,34 @@ async def test_e2e_086_agent_card_started(
         mode="react",
         description="Financial analyst",
     )
-    response = await http_client.get(f"/agents/{agent_id}/.well-known/agent-card.json")
+    response = await http_client.get(f"/agents/{agent_id}{CARD_PATH}")
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("application/json")
     payload = response.json()
+
+    # Spec-required identity fields.
+    assert payload["id"] == str(agent_id)
     assert payload["name"] == "fin-analyst"
     assert payload["description"] == "Financial analyst"
     assert payload["version"] == "1.0"
-    assert payload["url"].endswith(f"/agents/{agent_id}")
-    assert payload["capabilities"] == {"streaming": True, "pushNotifications": False}
+
+    # Provider + interfaces.
+    assert payload["provider"]["organization"] == "lcnc-a2a"
+    assert payload["interfaces"], payload
+    iface = payload["interfaces"][0]
+    assert iface["transport"] == "HTTP+JSON"
+    assert iface["url"].endswith(f"/agents/{agent_id}")
+
+    # Feature flags + security.
+    assert payload["capabilities"]["streaming"] is True
+    assert payload["capabilities"]["pushNotifications"] is False
     assert payload["securitySchemes"] == {"bearer_api_key": {"type": "http", "scheme": "bearer"}}
-    assert payload["skills"] == [{"name": "fin-analyst", "description": "Financial analyst", "tags": ["react"]}]
+
+    # Default I/O modes + skills.
     assert payload["defaultInputModes"] == ["text"]
     assert payload["defaultOutputModes"] == ["text"]
+    assert payload["skills"][0]["name"] == "fin-analyst"
+    assert payload["skills"][0]["tags"] == ["react"]
 
 
 @pytest.mark.asyncio
@@ -54,7 +76,7 @@ async def test_e2e_087_agent_card_stopped_returns_503(
             text("UPDATE agents SET status = 'stopped' WHERE id = :id"),
             {"id": agent_id},
         )
-    response = await http_client.get(f"/agents/{agent_id}/.well-known/agent-card.json")
+    response = await http_client.get(f"/agents/{agent_id}{CARD_PATH}")
     assert response.status_code == 503
     assert response.json() == {"error": "agent_stopped"}
 
@@ -62,7 +84,7 @@ async def test_e2e_087_agent_card_stopped_returns_503(
 @pytest.mark.asyncio
 async def test_e2e_088_agent_card_unknown_agent_returns_404(http_client: httpx.AsyncClient) -> None:
     random_id = uuid.uuid4()
-    response = await http_client.get(f"/agents/{random_id}/.well-known/agent-card.json")
+    response = await http_client.get(f"/agents/{random_id}{CARD_PATH}")
     assert response.status_code == 404
 
 
@@ -99,6 +121,6 @@ async def test_e2e_025_start_makes_card_active(
         ).scalar_one()
     assert status == "started"
 
-    card_response = await client.get(f"/agents/{agent_id}/.well-known/agent-card.json")
+    card_response = await client.get(f"/agents/{agent_id}{CARD_PATH}")
     assert card_response.status_code == 200
     assert card_response.headers["content-type"].startswith("application/json")

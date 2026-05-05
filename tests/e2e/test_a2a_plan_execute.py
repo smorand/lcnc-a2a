@@ -13,9 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    artifact_text,
+    event_phase,
+    event_state,
     fetch_runs_for_agent,
     fetch_steps,
     install_llm_mock,
+    is_artifact_event,
+    is_status_event,
     make_a2a_envelope,
     post_a2a,
 )
@@ -94,11 +99,7 @@ async def test_e2e_073_pe_happy_path_three_sequential_steps(
     assert status == 200, events
     assert headers["content-type"].startswith("text/event-stream")
 
-    phases = [
-        e.get("payload", {}).get("phase")
-        for e in events
-        if e.get("event") == "TaskStatusUpdate" and isinstance(e.get("payload"), dict)
-    ]
+    phases = [event_phase(e) for e in events if is_status_event(e) and event_phase(e) is not None]
     assert phases == [
         "planning",
         "executing",
@@ -107,18 +108,15 @@ async def test_e2e_073_pe_happy_path_three_sequential_steps(
         "synthesizing",
     ]
 
-    executing_events = [
-        e
-        for e in events
-        if e.get("event") == "TaskStatusUpdate" and (e.get("payload") or {}).get("phase") == "executing"
-    ]
-    assert [e["payload"]["stage"] for e in executing_events] == [1, 2, 3]
-    assert [e["payload"]["steps"] for e in executing_events] == [[1], [2], [3]]
+    executing_events = [e for e in events if is_status_event(e) and event_phase(e) == "executing"]
+    metas = [e["statusUpdate"]["metadata"] for e in executing_events]
+    assert [m["stage"] for m in metas] == [1, 2, 3]
+    assert [m["steps"] for m in metas] == [[1], [2], [3]]
 
-    artifacts = [e for e in events if e.get("event") == "TaskArtifactUpdate"]
-    rendered = "".join(p.get("text", "") for a in artifacts for p in a["artifact"]["parts"])
+    artifacts = [e for e in events if is_artifact_event(e)]
+    rendered = "".join(artifact_text(a) for a in artifacts)
     assert rendered == "final"
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     assert search_touch.exists() and search_touch.read_text().strip().startswith("search:")
     assert market_touch.exists() and market_touch.read_text().strip().startswith("market:")
@@ -177,7 +175,7 @@ async def test_e2e_074_pe_parallel_stage_executes_concurrently(
     timings: dict[str, float] = {}
     async with http_client.stream(
         "POST",
-        f"/agents/{agent_id}",
+        f"/agents/{agent_id}/message:stream",
         json=make_a2a_envelope("hi"),
         headers={"Authorization": f"Bearer {plain}"},
     ) as response:
@@ -186,8 +184,9 @@ async def test_e2e_074_pe_parallel_stage_executes_concurrently(
             if not line.startswith("data:"):
                 continue
             data = json.loads(line[5:].strip())
-            payload = data.get("payload") if isinstance(data, dict) else None
-            phase = payload.get("phase") if isinstance(payload, dict) else None
+            update = data.get("statusUpdate") if isinstance(data, dict) else None
+            metadata = update.get("metadata") if isinstance(update, dict) else None
+            phase = metadata.get("phase") if isinstance(metadata, dict) else None
             now = time.perf_counter()
             if phase == "executing" and "executing_stage_1" not in timings:
                 timings["executing_stage_1"] = now
@@ -258,7 +257,7 @@ async def test_e2e_085_pe_state_transitions_running_to_completed(
         body=make_a2a_envelope("hi"),
     )
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     assert pre_synthesis_status["status"] == "running"
     assert pre_synthesis_status["completed_at"] is None

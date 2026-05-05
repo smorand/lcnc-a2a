@@ -16,8 +16,6 @@ from typing import Any
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lcnc_a2a.a2a.envelope import task_artifact_update, task_status_update
-from lcnc_a2a.a2a.sse import encode_sse_event
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
@@ -78,6 +76,7 @@ class PlanExecuteExecutor:
         """Execute the PE pipeline and yield SSE event bytes."""
         cancel_event = ctx.cancellation
         cancelled = False
+        emitter = ctx.emitter
 
         try:
             await messages_service.append_message(
@@ -99,12 +98,12 @@ class PlanExecuteExecutor:
                 loops=0,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("working"))
-            yield encode_sse_event(task_status_update("failed", reason="context_full"))
+            yield emitter.working()
+            yield emitter.failed(reason="context_full")
             return
         await self._db.commit()
 
-        yield encode_sse_event(task_status_update("working"))
+        yield emitter.working()
 
         snapshot = ctx.run.config_snapshot if isinstance(ctx.run.config_snapshot, dict) else {}
         planner_prompt = snapshot.get("planner_prompt") or ctx.agent.planner_prompt or ""
@@ -130,7 +129,7 @@ class PlanExecuteExecutor:
         completed_step_ids: set[int] = set()
 
         # SSE: planning phase.
-        yield encode_sse_event(task_status_update("working", payload={"phase": "planning"}))
+        yield emitter.working(metadata={"phase": "planning"})
 
         # ---- Initial planner call (with one validation retry) ----
         try:
@@ -163,7 +162,7 @@ class PlanExecuteExecutor:
                 loops=loops,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("failed", reason=exc.stop_reason))
+            yield emitter.failed(reason=exc.stop_reason)
             return
 
         total_tokens_in += planner_tokens.tokens_in
@@ -212,15 +211,12 @@ class PlanExecuteExecutor:
                         cancelled = True
                         break
 
-                    yield encode_sse_event(
-                        task_status_update(
-                            "working",
-                            payload={
-                                "phase": "executing",
-                                "stage": stage_num,
-                                "steps": [s.id for s in stage_steps],
-                            },
-                        )
+                    yield emitter.working(
+                        metadata={
+                            "phase": "executing",
+                            "stage": stage_num,
+                            "steps": [s.id for s in stage_steps],
+                        },
                     )
 
                     coros = [
@@ -313,11 +309,11 @@ class PlanExecuteExecutor:
                             loops=loops,
                         )
                         await self._db.commit()
-                        yield encode_sse_event(task_status_update("failed", reason="replan_exceeded"))
+                        yield emitter.failed(reason="replan_exceeded")
                         return
 
                     replan_count += 1
-                    yield encode_sse_event(task_status_update("working", payload={"phase": "planning"}))
+                    yield emitter.working(metadata={"phase": "planning"})
                     try:
                         new_plan, new_plan_payload, planner_tokens = await self._call_planner(
                             ctx=ctx,
@@ -348,7 +344,7 @@ class PlanExecuteExecutor:
                             loops=loops,
                         )
                         await self._db.commit()
-                        yield encode_sse_event(task_status_update("failed", reason=exc.stop_reason))
+                        yield emitter.failed(reason=exc.stop_reason)
                         return
 
                     total_tokens_in += planner_tokens.tokens_in
@@ -392,7 +388,7 @@ class PlanExecuteExecutor:
                     await self._db.rollback()
 
         if cancelled:
-            yield encode_sse_event(task_status_update("cancelled"))
+            yield emitter.canceled()
             return
 
         if step_failed:
@@ -408,7 +404,7 @@ class PlanExecuteExecutor:
                 loops=loops,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("failed", reason="step_failed"))
+            yield emitter.failed(reason="step_failed")
             return
 
         # ---- Synthesis ----
@@ -430,10 +426,10 @@ class PlanExecuteExecutor:
                 loops=loops,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("failed", reason="guardrail_exceeded_no_synthesis"))
+            yield emitter.failed(reason="guardrail_exceeded_no_synthesis")
             return
 
-        yield encode_sse_event(task_status_update("working", payload={"phase": "synthesizing"}))
+        yield emitter.working(metadata={"phase": "synthesizing"})
         try:
             synth_response = await self._call_synthesis(
                 user_text=ctx.user_text,
@@ -457,7 +453,7 @@ class PlanExecuteExecutor:
                 loops=loops,
             )
             await self._db.commit()
-            yield encode_sse_event(task_status_update("failed", reason="llm_provider_error"))
+            yield emitter.failed(reason="llm_provider_error")
             return
 
         total_tokens_in += synth_response.tokens_in
@@ -496,8 +492,8 @@ class PlanExecuteExecutor:
             loops=loops,
         )
         await self._db.commit()
-        yield encode_sse_event(task_artifact_update(final_text))
-        yield encode_sse_event(task_status_update("completed"))
+        yield emitter.artifact(final_text)
+        yield emitter.completed()
 
     async def _call_planner(
         self,

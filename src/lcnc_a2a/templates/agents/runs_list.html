@@ -1,27 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Runs - {{ agent.name }} - LCNC A2A Builder{% endblock %}
+{% block title %}Runs — {{ agent.name }} — LCNC A2A Builder{% endblock %}
 {% block content %}
-<section class="cds--dashboard">
-  <header class="cds--dashboard__header">
-    <h1 class="cds--type-productive-heading-04">Runs for {{ agent.name }}</h1>
-    <p class="cds--type-body-long-01">
-      <a href="/agents/{{ agent.id }}">Back to agent</a>
-    </p>
+<section class="app-page">
+  <header class="app-page-header">
+    <div class="app-page-title">
+      <h1>Runs for {{ agent.name }}</h1>
+      <p class="app-page-title__subtitle">Per-run trace, tokens, cost. Expand a row for the full step list.</p>
+    </div>
+    <div class="app-page-actions">
+      <a class="btn btn--ghost" href="/agents/{{ agent.id }}">Back to agent</a>
+    </div>
   </header>
 
   {% if rows %}
-    <table class="cds--data-table runs-table">
+    <table class="data-table runs-table">
       <thead>
         <tr>
           <th>Started</th>
           <th>Task ID</th>
           <th>Context ID</th>
           <th>Status</th>
-          <th>Duration (ms)</th>
-          <th>Loops</th>
-          <th>Tokens in</th>
-          <th>Tokens out</th>
-          <th>Cost (USD)</th>
+          <th class="num">Duration (ms)</th>
+          <th class="num">Loops</th>
+          <th class="num">Tokens in</th>
+          <th class="num">Tokens out</th>
+          <th class="num">Cost (USD)</th>
           <th>Summary</th>
           <th></th>
         </tr>
@@ -33,7 +36,7 @@
       </tbody>
     </table>
   {% else %}
-    <div class="cds--empty-state runs-empty">
+    <div class="empty-state runs-empty">
       <p>Send a message to /agents/{{ agent.id }} to see runs here.</p>
     </div>
   {% endif %}

@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_reason,
+    event_state,
     fetch_runs_for_agent,
     fetch_steps,
     install_llm_mock,
@@ -150,11 +152,8 @@ async def test_e2e_064_react_synthesis_overshoot_skipped(
     assert len(stub.calls) == 2
 
     last = events[-1]
-    assert last == {
-        "event": "TaskStatusUpdate",
-        "state": "failed",
-        "reason": "guardrail_exceeded_no_synthesis",
-    }
+    assert event_state(last) == "TASK_STATE_FAILED"
+    assert event_reason(last) == "guardrail_exceeded_no_synthesis"
 
 
 @pytest.mark.asyncio

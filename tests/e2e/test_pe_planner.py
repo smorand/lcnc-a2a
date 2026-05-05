@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    event_reason,
+    event_state,
     fetch_runs_for_agent,
     install_llm_mock,
     make_a2a_envelope,
@@ -75,7 +77,7 @@ async def test_e2e_075_planner_returns_invalid_json_twice_planning_failed(
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "failed"
     assert runs[0]["stop_reason"] == "planning_failed"
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "failed", "reason": "planning_failed"}
+    assert event_state(events[-1]) == "TASK_STATE_FAILED" and event_reason(events[-1]) == "planning_failed"
 
 
 @pytest.mark.asyncio

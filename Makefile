@@ -7,9 +7,9 @@ SRC_DIR=src
 sync:
 	@uv sync
 
-## run-frontend: Run the FastAPI app on http://localhost:8000
+## run-frontend: Run the FastAPI app on http://localhost:8001
 run-frontend: sync
-	@uv run uvicorn lcnc_a2a.main:app --reload --host 0.0.0.0 --port 8000
+	@uv run uvicorn lcnc_a2a.main:app --reload --host 0.0.0.0 --port 8001
 
 ## db-migrate: Run alembic migrations
 db-migrate:

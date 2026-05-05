@@ -12,9 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.e2e._a2a_helpers import (
     StubLlm,
+    artifact_text,
+    event_phase,
+    event_state,
     fetch_runs_for_agent,
     fetch_steps,
     install_llm_mock,
+    is_artifact_event,
+    is_status_event,
     make_a2a_envelope,
     post_a2a,
 )
@@ -112,17 +117,13 @@ async def test_e2e_060_react_happy_path_stops_by_final(
     assert status == 200, events
     assert headers["content-type"].startswith("text/event-stream")
 
-    phase_events = [
-        e.get("payload", {}).get("phase")
-        for e in events
-        if e.get("event") == "TaskStatusUpdate" and isinstance(e.get("payload"), dict)
-    ]
+    phase_events = [event_phase(e) for e in events if is_status_event(e) and event_phase(e) is not None]
     assert phase_events == ["thought", "action", "observation"]
 
-    artifacts = [e for e in events if e.get("event") == "TaskArtifactUpdate"]
-    rendered = "".join(p.get("text", "") for a in artifacts for p in a["artifact"]["parts"])
+    artifacts = [e for e in events if is_artifact_event(e)]
+    rendered = "".join(artifact_text(a) for a in artifacts)
     assert rendered == "final"
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     assert runs[0]["status"] == "completed"
@@ -163,7 +164,7 @@ async def test_e2e_061_react_stops_by_similarity_at_iter_3(
 
     status, events, _ = await post_a2a(http_client, agent_id=agent_id, plain_key=plain, body=make_a2a_envelope("hi"))
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     runs = await fetch_runs_for_agent(db_engine, agent_id)
     run = runs[0]
@@ -214,7 +215,7 @@ async def test_e2e_066_react_tool_fails_3x_then_continues(
 
     status, events, _ = await post_a2a(http_client, agent_id=agent_id, plain_key=plain, body=make_a2a_envelope("go"))
     assert status == 200, events
-    assert events[-1] == {"event": "TaskStatusUpdate", "state": "completed"}
+    assert event_state(events[-1]) == "TASK_STATE_COMPLETED"
 
     assert touch_file.exists()
     assert touch_file.read_text().count("call") == 3
