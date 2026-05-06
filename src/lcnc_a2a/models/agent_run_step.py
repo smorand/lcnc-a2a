@@ -19,10 +19,10 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lcnc_a2a.models.base import Base
+from lcnc_a2a.models.types import JsonField, PkUuid
 
 
 class AgentRunStep(Base):
@@ -32,12 +32,12 @@ class AgentRunStep(Base):
     __table_args__ = (Index("ix_agent_run_steps_run_id_seq", "run_id", "seq"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("agent_runs.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -45,8 +45,8 @@ class AgentRunStep(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    tool_args_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
-    tool_result_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    tool_args_json: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)
+    tool_result_json: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)
     tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
     similarity_to_prev: Mapped[float | None] = mapped_column(Float, nullable=True)

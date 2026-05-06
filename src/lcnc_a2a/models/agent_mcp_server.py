@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lcnc_a2a.models.base import Base
+from lcnc_a2a.models.types import JsonField, PkUuid
 
 
 class AgentMcpServer(Base):
@@ -19,12 +19,12 @@ class AgentMcpServer(Base):
     __tablename__ = "agent_mcp_servers"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("agents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -36,5 +36,5 @@ class AgentMcpServer(Base):
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     headers_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     tool_timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("30"))
-    tools_cache: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    tools_cache: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)
     discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

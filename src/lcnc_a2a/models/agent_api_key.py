@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import CHAR, DateTime, ForeignKey, LargeBinary, String, func, text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lcnc_a2a.models.base import Base
+from lcnc_a2a.models.types import PkUuid
 
 
 class AgentApiKey(Base):
@@ -18,12 +18,12 @@ class AgentApiKey(Base):
     __tablename__ = "agent_api_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("agents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

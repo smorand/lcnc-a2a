@@ -17,10 +17,10 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lcnc_a2a.models.base import Base
+from lcnc_a2a.models.types import PkUuid
 
 
 class Agent(Base):
@@ -30,12 +30,12 @@ class Agent(Base):
     __table_args__ = (UniqueConstraint("user_id", "name", name="uq_agents_user_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
 down_revision: str | None = None
@@ -18,14 +17,14 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.create_table(
         "users",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("email", sa.String(length=255), nullable=False, unique=True),
         sa.Column("name", sa.String(length=255), nullable=False),
@@ -46,10 +45,10 @@ def upgrade() -> None:
 
     op.create_table(
         "sessions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
         sa.Column(
             "user_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),

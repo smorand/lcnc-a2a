@@ -70,8 +70,16 @@ class AppSecrets:
 
 
 def _async_to_sync_url(database_url: str) -> str:
-    """Translate ``postgresql+asyncpg://...`` to ``postgresql+psycopg2://...``."""
-    return database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    """Translate the configured async URL to its sync counterpart.
+
+    PostgreSQL: ``postgresql+asyncpg://`` → ``postgresql+psycopg2://``
+    SQLite:     ``sqlite+aiosqlite://``   → ``sqlite://`` (stdlib driver)
+    """
+    if database_url.startswith("postgresql+asyncpg://"):
+        return database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    if database_url.startswith("sqlite+aiosqlite://"):
+        return database_url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+    return database_url
 
 
 def _fingerprint(key: str) -> str:

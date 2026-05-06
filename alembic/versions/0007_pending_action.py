@@ -20,7 +20,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "agent_runs",
-        sa.Column("pending_action", JSONB(), nullable=True),
+        sa.Column("pending_action", sa.JSON().with_variant(JSONB(), "postgresql"), nullable=True),
     )
 
 

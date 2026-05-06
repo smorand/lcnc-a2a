@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0002"
 down_revision: str | None = "0001"
@@ -22,13 +21,12 @@ def upgrade() -> None:
         "agents",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "user_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -68,13 +66,12 @@ def upgrade() -> None:
         "agent_api_keys",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "agent_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agents.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -100,13 +97,12 @@ def upgrade() -> None:
         "agent_runs",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "agent_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agents.id", ondelete="CASCADE"),
             nullable=False,
         ),

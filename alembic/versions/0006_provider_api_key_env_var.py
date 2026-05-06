@@ -17,13 +17,16 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "agents",
-        sa.Column("provider_api_key_env_var", sa.String(length=120), nullable=True),
-    )
-    op.alter_column("agents", "provider_api_key_enc", nullable=True)
+    # Batch mode is required for ``alter_column`` on SQLite (which has no
+    # ``ALTER COLUMN``); on PostgreSQL it falls back to a plain ``ALTER``.
+    with op.batch_alter_table("agents") as batch_op:
+        batch_op.add_column(
+            sa.Column("provider_api_key_env_var", sa.String(length=120), nullable=True),
+        )
+        batch_op.alter_column("provider_api_key_enc", nullable=True, existing_type=sa.LargeBinary())
 
 
 def downgrade() -> None:
-    op.alter_column("agents", "provider_api_key_enc", nullable=False)
-    op.drop_column("agents", "provider_api_key_env_var")
+    with op.batch_alter_table("agents") as batch_op:
+        batch_op.alter_column("provider_api_key_enc", nullable=False, existing_type=sa.LargeBinary())
+        batch_op.drop_column("provider_api_key_env_var")

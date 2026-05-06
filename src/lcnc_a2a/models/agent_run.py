@@ -7,11 +7,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from lcnc_a2a.models.base import Base
+from lcnc_a2a.models.types import JsonField, PkUuid
 
 
 class AgentRun(Base):
@@ -21,17 +21,17 @@ class AgentRun(Base):
     __table_args__ = (Index("ix_agent_runs_agent_id_started_at", "agent_id", "started_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("agents.id", ondelete="CASCADE"),
         nullable=False,
     )
     context_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
+        PkUuid(),
         ForeignKey("agent_contexts.id", ondelete="SET NULL"),
         nullable=True,
     )
@@ -45,9 +45,9 @@ class AgentRun(Base):
     tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
-    plan: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    plan: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)
     final_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    config_snapshot: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    config_snapshot: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)
     # Snapshot of a tool call awaiting user confirmation (TASK_STATE_INPUT_REQUIRED).
     # Set when status='paused'; consumed and cleared on resume.
-    pending_action: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    pending_action: Mapped[Any | None] = mapped_column(JsonField(), nullable=True)

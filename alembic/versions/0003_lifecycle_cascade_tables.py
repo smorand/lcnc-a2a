@@ -26,13 +26,12 @@ def upgrade() -> None:
         "agent_mcp_servers",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "agent_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agents.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -48,7 +47,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("30"),
         ),
-        sa.Column("tools_cache", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "tools_cache", sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"), nullable=True
+        ),
         sa.Column("discovered_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_agent_mcp_servers_agent_id", "agent_mcp_servers", ["agent_id"])
@@ -57,13 +58,12 @@ def upgrade() -> None:
         "agent_contexts",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "agent_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agents.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -92,19 +92,22 @@ def upgrade() -> None:
         "agent_messages",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "context_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agent_contexts.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("role", sa.String(length=20), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("tool_call_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "tool_call_json",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            nullable=True,
+        ),
         sa.Column("tool_call_id", sa.String(length=100), nullable=True),
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column(
@@ -120,13 +123,12 @@ def upgrade() -> None:
         "agent_run_steps",
         sa.Column(
             "id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "run_id",
-            postgresql.UUID(as_uuid=True),
+            sa.Uuid(as_uuid=True),
             sa.ForeignKey("agent_runs.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -134,8 +136,16 @@ def upgrade() -> None:
         sa.Column("role", sa.String(length=20), nullable=False),
         sa.Column("content", sa.Text(), nullable=True),
         sa.Column("tool_name", sa.String(length=200), nullable=True),
-        sa.Column("tool_args_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("tool_result_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "tool_args_json",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            nullable=True,
+        ),
+        sa.Column(
+            "tool_result_json",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            nullable=True,
+        ),
         sa.Column("tokens_in", sa.Integer(), nullable=True),
         sa.Column("tokens_out", sa.Integer(), nullable=True),
         sa.Column("similarity_to_prev", sa.Float(), nullable=True),
