@@ -32,6 +32,25 @@ from lcnc_a2a.services.runs import list_running_run_ids_for_agent
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
 _LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_EXTRA_HEADERS_SLOTS = 5
+
+
+async def _extract_extra_header_pairs(request: Request) -> list[tuple[str, str]]:
+    """Read up to 5 ``(header_name_X, header_value_X)`` pairs off the form."""
+    form = await request.form()
+    pairs: list[tuple[str, str]] = []
+    for i in range(_EXTRA_HEADERS_SLOTS):
+        name = form.get(f"header_name_{i}", "")
+        value = form.get(f"header_value_{i}", "")
+        pairs.append(
+            (
+                name if isinstance(name, str) else "",
+                value if isinstance(value, str) else "",
+            )
+        )
+    return pairs
+
+
 _PRESET_LABELS = {
     "openrouter": "OpenRouter",
     "localhost": "Localhost (mlx_lm)",
@@ -131,6 +150,8 @@ async def create_agent_submit(
         "max_steps": max_steps,
     }
 
+    extra_header_pairs = await _extract_extra_header_pairs(request)
+
     try:
         data = validate_create_agent_form(
             name=name,
@@ -142,6 +163,7 @@ async def create_agent_submit(
             provider_api_key=provider_api_key,
             api_key_source=api_key_source,
             provider_api_key_env_var_name=provider_api_key_env_var_name,
+            extra_header_pairs=extra_header_pairs,
             system_prompt=system_prompt,
             planner_prompt=planner_prompt,
             executor_prompt=executor_prompt,
@@ -165,6 +187,7 @@ async def create_agent_submit(
             model_id=data.model_id,
             provider_api_key=data.provider_api_key,
             provider_api_key_env_var=data.provider_api_key_env_var,
+            extra_headers=data.extra_headers,
             crypto=crypto,
             system_prompt=data.system_prompt,
             planner_prompt=data.planner_prompt,
@@ -249,6 +272,7 @@ async def edit_agent_form(
     db: AsyncSession = Depends(get_db),
     user: User | None = Depends(fetch_current_user),
     csrf: CSRFManager = Depends(get_csrf_manager),
+    crypto: CryptoService = Depends(get_crypto),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> Response:
     """Render the prefilled edit-agent form."""
@@ -258,6 +282,7 @@ async def edit_agent_form(
     if agent is None:
         return Response(content="not_found", status_code=404)
 
+    extra_headers = _decode_extra_headers(agent, crypto)
     form = {
         "name": agent.name,
         "description": agent.description or "",
@@ -274,6 +299,7 @@ async def edit_agent_form(
         "max_tokens": str(agent.max_tokens),
         "similarity_threshold": "" if agent.similarity_threshold is None else str(agent.similarity_threshold),
         "max_steps": "" if agent.max_steps is None else str(agent.max_steps),
+        "extra_header_slots": _padded_header_slots(extra_headers),
     }
     return templates.TemplateResponse(
         request,
@@ -287,6 +313,31 @@ async def edit_agent_form(
             "error": None,
         },
     )
+
+
+def _decode_extra_headers(agent: AgentApiKey | object, crypto: CryptoService) -> dict[str, str]:
+    """Decrypt the agent's extra HTTP headers JSON, or return ``{}``."""
+    enc = getattr(agent, "provider_extra_headers_enc", None)
+    if not enc:
+        return {}
+    import json
+
+    try:
+        decoded = crypto.decrypt(enc).decode("utf-8")
+        parsed = json.loads(decoded)
+    except Exception:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def _padded_header_slots(headers: dict[str, str]) -> list[tuple[str, str]]:
+    """Pad the headers dict to exactly ``_EXTRA_HEADERS_SLOTS`` (name, value) tuples."""
+    items = list(headers.items())[:_EXTRA_HEADERS_SLOTS]
+    while len(items) < _EXTRA_HEADERS_SLOTS:
+        items.append(("", ""))
+    return items
 
 
 @router.post("/agents/{agent_id}")
@@ -361,6 +412,8 @@ async def update_or_delete_agent(
         "max_steps": max_steps,
     }
 
+    extra_header_pairs = await _extract_extra_header_pairs(request)
+
     try:
         data = validate_create_agent_form(
             name=name,
@@ -372,6 +425,7 @@ async def update_or_delete_agent(
             provider_api_key=provider_api_key,
             api_key_source=api_key_source,
             provider_api_key_env_var_name=provider_api_key_env_var_name,
+            extra_header_pairs=extra_header_pairs,
             system_prompt=system_prompt,
             planner_prompt=planner_prompt,
             executor_prompt=executor_prompt,
@@ -396,6 +450,7 @@ async def update_or_delete_agent(
             model_id=data.model_id,
             provider_api_key=data.provider_api_key,
             provider_api_key_env_var=data.provider_api_key_env_var,
+            extra_headers=data.extra_headers,
             crypto=crypto,
             system_prompt=data.system_prompt,
             planner_prompt=data.planner_prompt,

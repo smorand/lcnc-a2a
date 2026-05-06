@@ -48,6 +48,10 @@ class Agent(Base):
     model_id: Mapped[str] = mapped_column(String(200), nullable=False)
     provider_api_key_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     provider_api_key_env_var: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Up to 5 additional HTTP headers to send on every LLM call (encrypted
+    # JSON map of name → value). Used by the "Other (OpenAI-compatible)"
+    # preset for endpoints that need custom auth / org / project headers.
+    provider_extra_headers_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     planner_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

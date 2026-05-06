@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 NAME_MAX = 120
@@ -31,6 +32,12 @@ LOCALHOST_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "::1"})
 ALLOWED_MODES = frozenset({"simple", "react", "plan_execute"})
 ALLOWED_PROVIDERS = frozenset({"openrouter", "openai_compatible"})
 ALLOWED_API_KEY_SOURCES = frozenset({"input", "env_snapshot", "env_dynamic"})
+
+EXTRA_HEADERS_MAX = 5
+HEADER_NAME_MAX = 80
+HEADER_VALUE_MAX = 500
+# Per RFC 7230 ``token`` chars: alphanumerics + a small set of punctuation.
+HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+\-.^_`|~]+$")
 
 
 class AgentFormError(ValueError):
@@ -60,6 +67,7 @@ class AgentFormData:
     max_tokens: int
     similarity_threshold: float | None
     max_steps: int | None
+    extra_headers: dict[str, str] = field(default_factory=dict)
 
 
 def _coerce_int(raw: str, *, code: str) -> int:
@@ -82,6 +90,33 @@ def _is_localhost_endpoint(endpoint: str) -> bool:
     except ValueError:
         return False
     return host is not None and host.lower() in LOCALHOST_HOSTNAMES
+
+
+def _validate_extra_headers(pairs: list[tuple[str, str]]) -> dict[str, str]:
+    """Coerce up to ``EXTRA_HEADERS_MAX`` (name, value) pairs into a dict.
+
+    Empty pairs (both name and value blank) are silently ignored. Trailing
+    whitespace is stripped. Names are validated as RFC 7230 tokens; values
+    are stored verbatim (modulo length cap). Duplicate names raise.
+    """
+    out: dict[str, str] = {}
+    for name, value in pairs[:EXTRA_HEADERS_MAX]:
+        name = name.strip()
+        value = value.strip()
+        if not name and not value:
+            continue
+        if not name:
+            raise AgentFormError("extra_header_name_required")
+        if len(name) > HEADER_NAME_MAX:
+            raise AgentFormError("extra_header_name_too_long")
+        if not HEADER_NAME_RE.match(name):
+            raise AgentFormError("extra_header_name_invalid")
+        if len(value) > HEADER_VALUE_MAX:
+            raise AgentFormError("extra_header_value_too_long")
+        if name.lower() in (existing.lower() for existing in out):
+            raise AgentFormError("extra_header_duplicate")
+        out[name] = value
+    return out
 
 
 def _validate_env_var_name(name: str) -> str:
@@ -142,6 +177,7 @@ def validate_create_agent_form(
     provider_api_key: str,
     api_key_source: str = "input",
     provider_api_key_env_var_name: str = "",
+    extra_header_pairs: list[tuple[str, str]] | None = None,
     system_prompt: str,
     planner_prompt: str,
     executor_prompt: str,
@@ -186,6 +222,8 @@ def validate_create_agent_form(
         is_localhost=is_localhost,
         require_provider_api_key=require_provider_api_key,
     )
+
+    parsed_extra_headers = _validate_extra_headers(extra_header_pairs or [])
 
     parsed_system: str | None = None
     parsed_planner: str | None = None
@@ -238,6 +276,7 @@ def validate_create_agent_form(
         model_id=model_id,
         provider_api_key=resolved_key,
         provider_api_key_env_var=env_var_name,
+        extra_headers=parsed_extra_headers,
         system_prompt=parsed_system,
         planner_prompt=parsed_planner,
         executor_prompt=parsed_executor,

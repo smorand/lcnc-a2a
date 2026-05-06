@@ -472,6 +472,7 @@ class PlanExecuteExecutor:
                         api_key=ctx.provider_api_key,
                         max_tokens=max_tokens,
                         tracer=tracer,
+                        extra_headers=ctx.provider_extra_headers,
                     )
                 )
                 async for hb in heartbeat_until_done(synth_task):
@@ -622,6 +623,7 @@ class PlanExecuteExecutor:
                         endpoint=model_endpoint,
                         api_key=ctx.provider_api_key,
                         max_tokens=max_tokens,
+                        extra_headers=ctx.provider_extra_headers,
                     )
                     span.set_attribute("duration.ms", int((time.perf_counter() - chat_start) * 1000))
                     span.set_attribute("tokens.prompt", response.tokens_in)
@@ -701,6 +703,7 @@ class PlanExecuteExecutor:
                     endpoint=model_endpoint,
                     api_key=ctx.provider_api_key,
                     max_tokens=max_tokens,
+                    extra_headers=ctx.provider_extra_headers,
                 )
                 span.set_attribute("tokens.prompt", response.tokens_in)
                 span.set_attribute("tokens.completion", response.tokens_out)
@@ -742,6 +745,7 @@ class PlanExecuteExecutor:
         api_key: str,
         max_tokens: int,
         tracer: Any,
+        extra_headers: dict[str, str] | None = None,
     ) -> ChatResponse:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": user_text},
@@ -759,6 +763,7 @@ class PlanExecuteExecutor:
                 endpoint=endpoint,
                 api_key=api_key,
                 max_tokens=max_tokens,
+                extra_headers=extra_headers,
             )
             span.set_attribute("duration.ms", int((time.perf_counter() - chat_start) * 1000))
             span.set_attribute("tokens.prompt", response.tokens_in)

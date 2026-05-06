@@ -57,6 +57,7 @@ class LlmProvider(abc.ABC):
         endpoint: str,
         api_key: str,
         max_tokens: int,
+        extra_headers: dict[str, str] | None = None,
     ) -> ChatResponse:
         """Run a single chat completion."""
 
@@ -80,6 +81,7 @@ class OpenRouterProvider(LlmProvider):
         endpoint: str,
         api_key: str,
         max_tokens: int,
+        extra_headers: dict[str, str] | None = None,
     ) -> ChatResponse:
         return await _post_chat(
             client=self._client,
@@ -89,6 +91,7 @@ class OpenRouterProvider(LlmProvider):
             endpoint=endpoint,
             api_key=api_key,
             max_tokens=max_tokens,
+            extra_headers=extra_headers,
             include_cost=True,
         )
 
@@ -112,6 +115,7 @@ class OpenAiCompatibleProvider(LlmProvider):
         endpoint: str,
         api_key: str,
         max_tokens: int,
+        extra_headers: dict[str, str] | None = None,
     ) -> ChatResponse:
         return await _post_chat(
             client=self._client,
@@ -121,6 +125,7 @@ class OpenAiCompatibleProvider(LlmProvider):
             endpoint=endpoint,
             api_key=api_key,
             max_tokens=max_tokens,
+            extra_headers=extra_headers,
             include_cost=False,
         )
 
@@ -144,6 +149,7 @@ async def _post_chat(
     api_key: str,
     max_tokens: int,
     include_cost: bool,
+    extra_headers: dict[str, str] | None = None,
 ) -> ChatResponse:
     # ``max_tokens`` is the agent's cumulative output budget; the executors
     # enforce it across loops. We deliberately do not forward it as a per-call
@@ -163,6 +169,10 @@ async def _post_chat(
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
+    # Agent-configured custom headers can override defaults (e.g. a custom
+    # Authorization scheme replaces the bearer above).
+    if extra_headers:
+        headers.update(extra_headers)
     own_client = client is None
     if client is None:
         client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))

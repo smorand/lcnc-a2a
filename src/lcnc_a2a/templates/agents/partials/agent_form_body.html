@@ -110,6 +110,27 @@
         </div>
       </div>
     </div>
+
+    {# Custom HTTP headers — only for "Other (OpenAI-compatible)" preset.
+       Up to 5 slots; empty rows are silently ignored on submit. #}
+    <div class="form-row form-row--full" data-show-on-preset="other">
+      <span class="label">Custom HTTP headers</span>
+      <p class="form-row__hint">
+        Optional. Sent on every LLM call (e.g. <code>X-Org-Id</code>, custom
+        auth schemes). Up to {{ form.extra_header_slots|default([], true)|length or 5 }} slots; leave unused rows blank.
+      </p>
+      <div class="extra-headers">
+        {% set _slots = form.extra_header_slots|default([('','')] * 5, true) %}
+        {% for name, value in _slots %}
+          <div class="extra-header-row">
+            <input class="input" name="header_name_{{ loop.index0 }}"
+                   value="{{ name }}" placeholder="Header name" maxlength="80" autocomplete="off">
+            <input class="input" name="header_value_{{ loop.index0 }}"
+                   value="{{ value }}" placeholder="Header value" maxlength="500" autocomplete="off">
+          </div>
+        {% endfor %}
+      </div>
+    </div>
   </div>
 </div>
 

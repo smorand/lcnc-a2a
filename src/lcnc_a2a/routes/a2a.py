@@ -65,6 +65,25 @@ class _ProviderKeyEnvMissing(RuntimeError):
         self.var = var
 
 
+def _resolve_extra_headers(agent: Agent, crypto: CryptoService) -> dict[str, str]:
+    """Decrypt the agent's configured extra HTTP headers (or empty dict)."""
+    if not agent.provider_extra_headers_enc:
+        return {}
+    try:
+        decoded = crypto.decrypt(agent.provider_extra_headers_enc).decode("utf-8")
+    except Exception:
+        return {}
+    try:
+        import json
+
+        parsed = json.loads(decoded)
+    except ValueError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(k): str(v) for k, v in parsed.items() if isinstance(k, str) and isinstance(v, str)}
+
+
 def _resolve_provider_key(agent: Agent, crypto: CryptoService) -> str:
     """Return the live provider API key for ``agent``.
 
@@ -223,6 +242,7 @@ async def _prepare_run(
         provider_api_key=provider_key,
         cancellation=cancel_event,
         emitter=emitter,
+        provider_extra_headers=_resolve_extra_headers(agent, crypto),
         resume_action=resume_action,
     )
     return ctx, run, cancel_event, None

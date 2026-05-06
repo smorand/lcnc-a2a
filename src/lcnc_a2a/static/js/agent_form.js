@@ -52,6 +52,12 @@
       endpointInput.placeholder =
         presetSelect.value === "other" ? "https://your-host/v1" : preset.endpoint;
 
+      // Toggle blocks gated on a specific preset (e.g. custom HTTP headers).
+      form.querySelectorAll("[data-show-on-preset]").forEach((el) => {
+        const want = el.getAttribute("data-show-on-preset").split(",");
+        el.hidden = !want.includes(presetSelect.value);
+      });
+
       if (preset.apiKey === "none") {
         if (apiKeyRow) apiKeyRow.hidden = true;
         if (apiKeyInput) apiKeyInput.value = "";

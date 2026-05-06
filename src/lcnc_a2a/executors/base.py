@@ -7,6 +7,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from dataclasses import field as dataclasses_field
 from decimal import Decimal
 from typing import Any
 
@@ -34,6 +35,9 @@ class ExecutorContext:
     provider_api_key: str
     cancellation: asyncio.Event
     emitter: A2AEventEmitter
+    # Custom HTTP headers to send on every LLM call (decrypted from the
+    # agent's ``provider_extra_headers_enc`` column).
+    provider_extra_headers: dict[str, str] = dataclasses_field(default_factory=dict)
     # When set, this is a resume of a previously paused run. The executor
     # consumes ``resume_action`` (the snapshot the pause path persisted into
     # ``agent_runs.pending_action``) and treats ``user_text`` as the user's

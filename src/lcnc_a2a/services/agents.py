@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -68,6 +69,7 @@ async def create_agent(
     model_id: str,
     provider_api_key: str,
     provider_api_key_env_var: str | None,
+    extra_headers: dict[str, str],
     crypto: CryptoService,
     system_prompt: str | None,
     planner_prompt: str | None,
@@ -81,6 +83,9 @@ async def create_agent(
     encrypted_key: bytes | None = None
     if provider_api_key:
         encrypted_key = crypto.encrypt(provider_api_key.encode("utf-8"))
+    encrypted_headers = (
+        crypto.encrypt(json.dumps(extra_headers, sort_keys=True).encode("utf-8")) if extra_headers else None
+    )
     agent = Agent(
         user_id=user_id,
         name=name,
@@ -91,6 +96,7 @@ async def create_agent(
         model_id=model_id,
         provider_api_key_enc=encrypted_key,
         provider_api_key_env_var=provider_api_key_env_var,
+        provider_extra_headers_enc=encrypted_headers,
         system_prompt=system_prompt or None,
         planner_prompt=planner_prompt or None,
         executor_prompt=executor_prompt or None,
@@ -128,6 +134,7 @@ async def update_agent(
     model_id: str,
     provider_api_key: str,
     provider_api_key_env_var: str | None,
+    extra_headers: dict[str, str],
     crypto: CryptoService,
     system_prompt: str | None,
     planner_prompt: str | None,
@@ -150,6 +157,11 @@ async def update_agent(
     elif provider_api_key:
         agent.provider_api_key_enc = crypto.encrypt(provider_api_key.encode("utf-8"))
         agent.provider_api_key_env_var = None
+    # Headers are always overwritten with the form-submitted set: empty
+    # dict ⇒ clear column, non-empty ⇒ encrypt fresh JSON.
+    agent.provider_extra_headers_enc = (
+        crypto.encrypt(json.dumps(extra_headers, sort_keys=True).encode("utf-8")) if extra_headers else None
+    )
     agent.system_prompt = system_prompt or None
     agent.planner_prompt = planner_prompt or None
     agent.executor_prompt = executor_prompt or None

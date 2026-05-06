@@ -200,6 +200,7 @@ class ReActExecutor:
                                         endpoint=model_endpoint or "",
                                         api_key=ctx.provider_api_key,
                                         max_tokens=max_tokens,
+                                        extra_headers=ctx.provider_extra_headers,
                                     )
                                 )
                                 async for hb in heartbeat_until_done(chat_task):
