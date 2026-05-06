@@ -19,9 +19,15 @@ target_metadata = Base.metadata
 
 
 def _resolved_url() -> str:
-    """Pick URL from env var if set, otherwise from alembic.ini."""
+    """Pick URL from env var if set, otherwise from alembic.ini.
+
+    Alembic runs synchronously, so async drivers must be swapped to their
+    sync counterparts:
+      ``postgresql+asyncpg://`` → ``postgresql+psycopg2://``
+      ``sqlite+aiosqlite://``   → ``sqlite://`` (stdlib sqlite3 driver)
+    """
     raw = os.environ.get("LCNC_A2A_DATABASE_URL") or config.get_main_option("sqlalchemy.url") or ""
-    return raw.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+    return raw.replace("postgresql+asyncpg://", "postgresql+psycopg2://").replace("sqlite+aiosqlite://", "sqlite://")
 
 
 def run_migrations_offline() -> None:
