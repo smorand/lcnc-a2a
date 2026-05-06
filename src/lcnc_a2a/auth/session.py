@@ -15,6 +15,17 @@ from lcnc_a2a.models.user import User
 SESSION_COOKIE_NAME = "session"
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """Re-attach UTC tzinfo to naive datetimes coming back from SQLite.
+
+    PostgreSQL ``TIMESTAMPTZ`` preserves timezone natively, but SQLite stores
+    plain ``DATETIME`` and returns naive values. We always write UTC, so a
+    naive value here means "UTC at write time" — make it explicit before
+    comparing to a TZ-aware ``datetime.now(UTC)``.
+    """
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
 class SessionManager:
     """Mints and validates signed session cookies."""
 
@@ -56,7 +67,7 @@ class SessionManager:
         sess = result.scalar_one_or_none()
         if sess is None:
             return None
-        if sess.expires_at <= datetime.now(UTC):
+        if _as_utc(sess.expires_at) <= datetime.now(UTC):
             return None
         user_result = await db.execute(select(User).where(User.id == sess.user_id))
         return user_result.scalar_one_or_none()
