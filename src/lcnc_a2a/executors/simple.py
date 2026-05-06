@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lcnc_a2a.a2a.sse import heartbeat_until_done
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
@@ -191,14 +192,22 @@ class SimpleExecutor:
                         with tracer.start_as_current_span("llm.chat") as llm_span:
                             llm_span.set_attribute("model", model_id or "")
                             llm_span.set_attribute("provider", self._provider.name)
-                            response: ChatResponse = await self._provider.chat(
-                                messages=payload,
-                                tools=openai_tools,
-                                model_id=model_id or "",
-                                endpoint=model_endpoint or "",
-                                api_key=ctx.provider_api_key,
-                                max_tokens=max_tokens,
+                            chat_task: asyncio.Task[ChatResponse] = asyncio.create_task(
+                                self._provider.chat(
+                                    messages=payload,
+                                    tools=openai_tools,
+                                    model_id=model_id or "",
+                                    endpoint=model_endpoint or "",
+                                    api_key=ctx.provider_api_key,
+                                    max_tokens=max_tokens,
+                                )
                             )
+                            # Emit SSE comment keep-alives every minute so the
+                            # client read-timeout never fires while a slow
+                            # local LLM is generating.
+                            async for hb in heartbeat_until_done(chat_task):
+                                yield hb
+                            response: ChatResponse = await chat_task
                             duration_ms = int((time.perf_counter() - chat_start) * 1000)
                             llm_span.set_attribute("tokens.prompt", response.tokens_in)
                             llm_span.set_attribute("tokens.completion", response.tokens_out)

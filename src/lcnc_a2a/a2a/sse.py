@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 from lcnc_a2a.a2a.envelope import (
@@ -25,6 +27,51 @@ from lcnc_a2a.a2a.envelope import (
 def encode_sse_event(payload: dict[str, Any]) -> bytes:
     """Encode a JSON payload as a single SSE ``data:`` event."""
     return f"data: {json.dumps(payload)}\n\n".encode()
+
+
+# Frames spec: per the Server-Sent Events spec (W3C), a line beginning with
+# ``:`` is a comment and must be ignored by the client. We use it as a
+# transport-level keep-alive that resets read-timeouts on httpx, browsers,
+# and intermediate proxies WITHOUT producing a visible application event.
+SSE_KEEPALIVE = b": keepalive\n\n"
+
+DEFAULT_HEARTBEAT_INTERVAL_S = 60.0
+
+
+async def heartbeat_until_done(
+    task: asyncio.Task[Any],
+    *,
+    interval: float = DEFAULT_HEARTBEAT_INTERVAL_S,
+) -> AsyncIterator[bytes]:
+    """Yield SSE comment heartbeats every ``interval`` seconds while ``task`` runs.
+
+    Used around long ``provider.chat()`` calls so client read-timeouts never
+    fire on a still-active agent. The wrapped ``task`` is shielded from
+    spurious cancellation across heartbeat iterations; on real outer
+    cancellation we propagate after asking the task to stop.
+
+    Caller pattern::
+
+        chat_task = asyncio.create_task(provider.chat(...))
+        async for hb in heartbeat_until_done(chat_task):
+            yield hb
+        response = await chat_task  # observes result / exception
+    """
+    while not task.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=interval)
+            return
+        except TimeoutError:
+            yield SSE_KEEPALIVE
+        except asyncio.CancelledError:
+            # Outer task was cancelled (e.g. client disconnect). Stop the
+            # wrapped LLM call so the executor's ``finally`` can finalize
+            # the run as cancelled rather than wait indefinitely.
+            task.cancel()
+            raise
+        except BaseException:
+            # Task itself failed — let the caller observe via ``await task``.
+            return
 
 
 class A2AEventEmitter:
@@ -166,4 +213,10 @@ class A2AEventEmitter:
         )
 
 
-__all__ = ["A2AEventEmitter", "encode_sse_event"]
+__all__ = [
+    "DEFAULT_HEARTBEAT_INTERVAL_S",
+    "SSE_KEEPALIVE",
+    "A2AEventEmitter",
+    "encode_sse_event",
+    "heartbeat_until_done",
+]

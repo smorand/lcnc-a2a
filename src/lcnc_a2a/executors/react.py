@@ -16,6 +16,7 @@ import httpx
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lcnc_a2a.a2a.sse import heartbeat_until_done
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
@@ -191,14 +192,19 @@ class ReActExecutor:
                             with tracer.start_as_current_span("llm.chat") as llm_span:
                                 llm_span.set_attribute("model", model_id or "")
                                 llm_span.set_attribute("provider", self._provider.name)
-                                response = await self._provider.chat(
-                                    messages=payload,
-                                    tools=openai_tools,
-                                    model_id=model_id or "",
-                                    endpoint=model_endpoint or "",
-                                    api_key=ctx.provider_api_key,
-                                    max_tokens=max_tokens,
+                                chat_task: asyncio.Task[ChatResponse] = asyncio.create_task(
+                                    self._provider.chat(
+                                        messages=payload,
+                                        tools=openai_tools,
+                                        model_id=model_id or "",
+                                        endpoint=model_endpoint or "",
+                                        api_key=ctx.provider_api_key,
+                                        max_tokens=max_tokens,
+                                    )
                                 )
+                                async for hb in heartbeat_until_done(chat_task):
+                                    yield hb
+                                response = await chat_task
                                 duration_ms = int((time.perf_counter() - chat_start) * 1000)
                                 llm_span.set_attribute("tokens.prompt", response.tokens_in)
                                 llm_span.set_attribute("tokens.completion", response.tokens_out)
@@ -513,16 +519,21 @@ class ReActExecutor:
                     return
 
                 try:
-                    synth_response = await run_synthesis(
-                        provider=self._provider,
-                        system_prompt=system_prompt,
-                        user_text=ctx.user_text,
-                        scratchpad_text=scratchpad_text,
-                        model_id=model_id or "",
-                        endpoint=model_endpoint or "",
-                        api_key=ctx.provider_api_key,
-                        max_tokens=max_tokens,
+                    synth_task: asyncio.Task[ChatResponse] = asyncio.create_task(
+                        run_synthesis(
+                            provider=self._provider,
+                            system_prompt=system_prompt,
+                            user_text=ctx.user_text,
+                            scratchpad_text=scratchpad_text,
+                            model_id=model_id or "",
+                            endpoint=model_endpoint or "",
+                            api_key=ctx.provider_api_key,
+                            max_tokens=max_tokens,
+                        )
                     )
+                    async for hb in heartbeat_until_done(synth_task):
+                        yield hb
+                    synth_response = await synth_task
                 except LlmProviderError:
                     await runs_service.finalize_run(
                         self._db,

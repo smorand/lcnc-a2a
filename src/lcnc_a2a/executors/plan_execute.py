@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lcnc_a2a.a2a.sse import heartbeat_until_done
 from lcnc_a2a.crypto import CryptoService
 from lcnc_a2a.executors.base import (
     ExecutorContext,
@@ -147,18 +148,23 @@ class PlanExecuteExecutor:
 
             # ---- Initial planner call (with one validation retry) ----
             try:
-                initial_plan, initial_plan_payload, planner_tokens = await self._call_planner(
-                    ctx=ctx,
-                    planner_prompt=planner_prompt,
-                    max_steps=max_steps,
-                    max_tokens=max_tokens,
-                    available_tools=available_tools,
-                    model_id=model_id or "",
-                    model_endpoint=model_endpoint or "",
-                    completed_outputs={},
-                    replan_reason=None,
-                    tracer=tracer,
+                planner_task = asyncio.create_task(
+                    self._call_planner(
+                        ctx=ctx,
+                        planner_prompt=planner_prompt,
+                        max_steps=max_steps,
+                        max_tokens=max_tokens,
+                        available_tools=available_tools,
+                        model_id=model_id or "",
+                        model_endpoint=model_endpoint or "",
+                        completed_outputs={},
+                        replan_reason=None,
+                        tracer=tracer,
+                    )
                 )
+                async for hb in heartbeat_until_done(planner_task):
+                    yield hb
+                initial_plan, initial_plan_payload, planner_tokens = await planner_task
             except _PlannerFailed as exc:
                 total_tokens_in += exc.tokens_in
                 total_tokens_out += exc.tokens_out
@@ -331,18 +337,23 @@ class PlanExecuteExecutor:
                         replan_count += 1
                         yield emitter.working(metadata={"phase": "planning"})
                         try:
-                            new_plan, new_plan_payload, planner_tokens = await self._call_planner(
-                                ctx=ctx,
-                                planner_prompt=planner_prompt,
-                                max_steps=max_steps,
-                                max_tokens=max_tokens,
-                                available_tools=available_tools,
-                                model_id=model_id or "",
-                                model_endpoint=model_endpoint or "",
-                                completed_outputs=dict(step_outputs),
-                                replan_reason=replan_reason,
-                                tracer=tracer,
+                            replan_task = asyncio.create_task(
+                                self._call_planner(
+                                    ctx=ctx,
+                                    planner_prompt=planner_prompt,
+                                    max_steps=max_steps,
+                                    max_tokens=max_tokens,
+                                    available_tools=available_tools,
+                                    model_id=model_id or "",
+                                    model_endpoint=model_endpoint or "",
+                                    completed_outputs=dict(step_outputs),
+                                    replan_reason=replan_reason,
+                                    tracer=tracer,
+                                )
                             )
+                            async for hb in heartbeat_until_done(replan_task):
+                                yield hb
+                            new_plan, new_plan_payload, planner_tokens = await replan_task
                         except _PlannerFailed as exc:
                             total_tokens_in += exc.tokens_in
                             total_tokens_out += exc.tokens_out
@@ -452,15 +463,20 @@ class PlanExecuteExecutor:
 
             yield emitter.working(metadata={"phase": "synthesizing"})
             try:
-                synth_response = await self._call_synthesis(
-                    user_text=ctx.user_text,
-                    scratchpad_text=scratchpad_text,
-                    model_id=model_id or "",
-                    endpoint=model_endpoint or "",
-                    api_key=ctx.provider_api_key,
-                    max_tokens=max_tokens,
-                    tracer=tracer,
+                synth_task = asyncio.create_task(
+                    self._call_synthesis(
+                        user_text=ctx.user_text,
+                        scratchpad_text=scratchpad_text,
+                        model_id=model_id or "",
+                        endpoint=model_endpoint or "",
+                        api_key=ctx.provider_api_key,
+                        max_tokens=max_tokens,
+                        tracer=tracer,
+                    )
                 )
+                async for hb in heartbeat_until_done(synth_task):
+                    yield hb
+                synth_response = await synth_task
             except LlmProviderError:
                 await runs_service.finalize_run(
                     self._db,
