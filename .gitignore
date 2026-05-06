@@ -15,3 +15,9 @@ build/
 .env.local
 traces/
 *.log
+
+# Local SQLite databases (per-developer, not portable to Postgres prod).
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
