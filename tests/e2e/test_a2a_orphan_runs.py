@@ -116,6 +116,79 @@ async def test_executor_cancellation_finalizes_run_as_cancelled(
 
 
 @pytest.mark.asyncio
+async def test_schedule_orphan_finalize_uses_a_separate_session(
+    seed_user,
+    db_engine: AsyncEngine,
+) -> None:
+    """Regression test for asyncpg ``another operation in progress`` race.
+
+    The orphan finalize must NOT use the request-scoped session passed in:
+    that session is being torn down by FastAPI's dependency cleanup at the
+    same moment, and asyncpg refuses concurrent operations on a connection.
+    The fix spawns a detached task with a fresh session built off the same
+    engine. This test asserts:
+
+      1. After ``schedule_orphan_finalize`` returns, the spawned task is
+         tracked so we can await it.
+      2. The original session can be closed immediately (mimicking the
+         FastAPI cleanup) without the orphan task observing any error.
+      3. The run row is still written to its terminal state by the
+         independent session.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    user_id = await seed_user("alice@example.com", "Alice")
+    agent_id, _plain = await seed_started_agent(db_engine, user_id=user_id, name="agent-A")
+
+    sessionmaker = async_sessionmaker(db_engine, expire_on_commit=False)
+    run_id = uuid.uuid4()
+
+    async with sessionmaker() as setup:
+        await setup.execute(
+            text(
+                "INSERT INTO agent_runs (id, agent_id, a2a_task_id, status, started_at) "
+                "VALUES (:id, :a, :t, 'running', :ts)"
+            ),
+            {"id": run_id, "a": agent_id, "t": str(uuid.uuid4()), "ts": datetime.now(UTC)},
+        )
+        await setup.commit()
+
+    # Open the "request session", schedule the finalize, then immediately
+    # close the request session — exactly the race condition the production
+    # bug exhibited.
+    request_session = sessionmaker()
+    await request_session.__aenter__()
+    runs_service.schedule_orphan_finalize(
+        request_session,
+        run_id=run_id,
+        cancel_event_set=False,
+        exc_type=asyncio.CancelledError,
+        tokens_in=0,
+        tokens_out=0,
+        cost_usd=None,
+        loops=0,
+    )
+    # Spawned task should be tracked.
+    assert any(t.get_name() == f"orphan-finalize-{run_id}" for t in runs_service._ORPHAN_TASKS)
+    await request_session.__aexit__(None, None, None)
+
+    # Wait for the detached finalize task. It must complete without raising.
+    pending = [t for t in runs_service._ORPHAN_TASKS if t.get_name() == f"orphan-finalize-{run_id}"]
+    for t in pending:
+        await t  # propagates any exception the task swallowed; we only swallow at db level
+
+    async with db_engine.begin() as conn:
+        row = (
+            await conn.execute(
+                text("SELECT status, stop_reason FROM agent_runs WHERE id = :id"),
+                {"id": run_id},
+            )
+        ).one()
+    assert row.status == "cancelled", row
+    assert row.stop_reason == "client_disconnected", row
+
+
+@pytest.mark.asyncio
 async def test_reap_abandoned_runs_finalizes_old_running_rows(
     seed_user,
     db_engine: AsyncEngine,
