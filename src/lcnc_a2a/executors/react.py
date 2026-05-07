@@ -630,19 +630,16 @@ class ReActExecutor:
             # this guarantees the run never stays ``running`` forever.
             if not finalized:
                 exc_type = sys.exc_info()[0]
-                with contextlib.suppress(Exception):
-                    await asyncio.shield(
-                        runs_service.finalize_orphan_run(
-                            self._db,
-                            run_id=ctx.run.id,
-                            cancel_event_set=cancel_event.is_set(),
-                            exc_type=exc_type,
-                            tokens_in=total_tokens_in,
-                            tokens_out=total_tokens_out,
-                            cost_usd=total_cost,
-                            loops=loops,
-                        )
-                    )
+                runs_service.schedule_orphan_finalize(
+                    self._db,
+                    run_id=ctx.run.id,
+                    cancel_event_set=cancel_event.is_set(),
+                    exc_type=exc_type,
+                    tokens_in=total_tokens_in,
+                    tokens_out=total_tokens_out,
+                    cost_usd=total_cost,
+                    loops=loops,
+                )
 
     async def _embed_text(
         self,

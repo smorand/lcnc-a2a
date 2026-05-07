@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lcnc_a2a.models.agent import Agent
 from lcnc_a2a.models.agent_run import AgentRun
 from lcnc_a2a.models.agent_run_step import AgentRunStep
+
+logger = logging.getLogger(__name__)
 
 
 def snapshot_agent_config(agent: Agent) -> dict[str, Any]:
@@ -184,7 +186,7 @@ async def resume_run(
     await db.flush()
 
 
-async def finalize_orphan_run(
+def schedule_orphan_finalize(
     db: AsyncSession,
     *,
     run_id: uuid.UUID,
@@ -195,13 +197,18 @@ async def finalize_orphan_run(
     cost_usd: Decimal | None,
     loops: int,
 ) -> None:
-    """Finalize a run that exited without going through one of the inline
-    ``finalize_run`` paths.
+    """Spawn a detached task that finalizes ``run_id`` on a *fresh* DB session.
 
     Called from the executor's ``finally`` block when the ``finalized`` flag
     was never set; covers client disconnects (``CancelledError`` /
     ``GeneratorExit``) and unexpected exceptions. Without this, the run row
     stays ``running`` forever and ``GET /tasks/{id}`` lies to the caller.
+
+    A separate session is essential: the request-scoped session passed in is
+    being torn down by FastAPI's dependency cleanup at the same time. Two
+    coroutines using the same asyncpg connection trip
+    "cannot perform operation: another operation is in progress". The new
+    session uses a fresh connection from the engine pool.
 
     The cause-of-exit triage:
       - ``cancel_event_set``: explicit cancel (DELETE / Stop) → ``cancelled`` /
@@ -216,22 +223,41 @@ async def finalize_orphan_run(
         status, reason = "cancelled", "client_disconnected"
     else:
         status, reason = "failed", "internal_error"
-    try:
-        await finalize_run(
-            db,
-            run_id=run_id,
-            status=status,
-            stop_reason=reason,
-            final_answer=None,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            cost_usd=cost_usd,
-            loops=loops,
-        )
-        await db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            await db.rollback()
+
+    bind = db.bind
+    if bind is None:
+        return
+
+    sessionmaker = async_sessionmaker(bind, expire_on_commit=False)
+
+    async def _do() -> None:
+        try:
+            async with sessionmaker() as session:
+                await finalize_run(
+                    session,
+                    run_id=run_id,
+                    status=status,
+                    stop_reason=reason,
+                    final_answer=None,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=cost_usd,
+                    loops=loops,
+                )
+                await session.commit()
+        except Exception:
+            logger.exception("orphan finalize for run %s failed", run_id)
+
+    # Fire-and-forget: the loop keeps it alive until completion. We don't
+    # await it because the caller may itself be cancelling.
+    task = asyncio.create_task(_do(), name=f"orphan-finalize-{run_id}")
+    # Hold a strong reference until the task finishes; otherwise GC could
+    # collect the task before it runs (asyncio uses weak refs internally).
+    _ORPHAN_TASKS.add(task)
+    task.add_done_callback(_ORPHAN_TASKS.discard)
+
+
+_ORPHAN_TASKS: set[asyncio.Task[None]] = set()
 
 
 async def reap_abandoned_runs(
