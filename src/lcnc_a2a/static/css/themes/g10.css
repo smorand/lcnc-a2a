@@ -1,60 +1,71 @@
 /* ============================================================
-   Theme: g10 (IBM Carbon Design System — White / Gray 10, light mode)
-   Defines every CSS variable consumed by app.css.
+   Theme: g10 (IBM Carbon Design System, light)
    ============================================================ */
 
 :root {
-  /* Backgrounds */
-  --color-bg:                #f4f4f4;
-  --color-bg-hover:          #e8e8e8;
-  --color-surface:           #ffffff;
-  --color-surface-elevated:  #ffffff;
+  color-scheme: light;
+
+  /* Layers */
+  --c-bg:               #f4f4f4;
+  --c-layer01:          #ffffff;
+  --c-layer02:          #e0e0e0;
+  --c-layer03:          #c6c6c6;
+  --c-field01:          #ffffff;
+  --c-field02:          #e0e0e0;
 
   /* Borders */
-  --color-border:            #e0e0e0;
-  --color-border-strong:     #c6c6c6;
+  --c-border-subtle:    #e0e0e0;
+  --c-border-strong:    #8d8d8d;
+  --c-border-inverse:   #161616;
 
   /* Text */
-  --color-text:              #161616;
-  --color-text-muted:        #525252;
-  --color-text-subtle:       #a8a8a8;
+  --c-text:             #161616;
+  --c-text-secondary:   #525252;
+  --c-text-helper:      #6f6f6f;
+  --c-text-placeholder: #a8a8a8;
+  --c-text-on-color:    #ffffff;
 
-  /* Links */
-  --color-link:              #0f62fe;
-  --color-link-hover:        #0043ce;
+  /* Brand blues */
+  --c-blue40:           #78a9ff;
+  --c-blue50:           #4589ff;
+  --c-blue60:           #0f62fe;
+  --c-blue70:           #0043ce;
+  --c-blue80:           #002d9c;
 
-  /* Brand / interactive */
-  --color-primary:           #0f62fe;
-  --color-primary-hover:     #0353e9;
-  --color-primary-active:    #002d9c;
-  --color-on-primary:        #ffffff;
+  /* Status */
+  --c-success:          #198038;
+  --c-warning:          #f1c21b;
+  --c-error:            #da1e28;
+  --c-error-bg:         #fff1f1;
 
-  --color-secondary:         #393939;
-  --color-secondary-hover:   #4c4c4c;
+  /* Icon */
+  --c-icon:             #161616;
+  --c-icon-secondary:   #525252;
 
-  --color-danger:            #da1e28;
-  --color-danger-hover:      #b81921;
-  --color-on-danger:         #ffffff;
+  --c-skeleton:         #e8e8e8;
+  --c-focus:            #0f62fe;
 
-  --color-success:           #24a148;
-  --color-warning:           #f1c21b;
-  --color-info:              #0f62fe;
-
-  --color-focus:             #0f62fe;
-
-  /* Inputs */
-  --input-bg:                #ffffff;
-  --input-bg-hover:          #f4f4f4;
-  --input-border:            #c6c6c6;
-  --input-border-focus:      #0f62fe;
+  /* Tag palette */
+  --c-tag-blue-bg:      #d0e2ff;
+  --c-tag-blue-fg:      #002d9c;
+  --c-tag-green-bg:     #defbe6;
+  --c-tag-green-fg:     #044317;
+  --c-tag-yellow-bg:    #fcf4d6;
+  --c-tag-yellow-fg:    #594800;
+  --c-tag-red-bg:       #ffd7d9;
+  --c-tag-red-fg:       #750e13;
+  --c-tag-gray-bg:      var(--c-layer02);
+  --c-tag-gray-fg:      var(--c-text);
 
   /* Typography */
-  --font-sans:        "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:        "IBM Plex Mono", "Menlo", "Courier New", monospace;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo,
+               "Courier New", monospace;
   --text-base-size:   14px;
   --text-line-height: 1.5;
 
-  /* Spacing scale */
+  /* Spacing */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -63,25 +74,23 @@
   --space-6: 2rem;
   --space-7: 3rem;
   --space-8: 4rem;
-  --space-9: 6rem;
 
   /* Radii */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --radius-sm: 0;
+  --radius-md: 0;
 
   /* Layout */
-  --header-height:     3rem;
-  --content-max-width: 1200px;
+  --rail-w:           48px;
+  --header-h:         48px;
+  --footer-h:         64px;
+  --row-h:            40px;
+  --content-max-w:    1280px;
 
   /* Transitions */
   --transition-fast:     110ms cubic-bezier(0.2, 0, 0.38, 0.9);
   --transition-moderate: 150ms cubic-bezier(0.2, 0, 0.38, 0.9);
-}
 
-html { color-scheme: light; }
+  /* Shadows */
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+}

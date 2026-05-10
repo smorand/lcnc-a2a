@@ -1,37 +1,59 @@
 {% extends "base.html" %}
-{% block title %}Create agent — LCNC A2A Builder{% endblock %}
+{% from "_macros.html" import icon, breadcrumbs %}
+{% block title %}Generate agent — LCNC A2A Builder{% endblock %}
 {% block head %}
   <script src="/static/js/agent_form.js" defer></script>
 {% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>Create agent</h1>
-      <p class="app-page-title__subtitle">
-        Configure model, prompts and guardrails. The agent is created in
-        <code>stopped</code> state. MCP servers (tools) are attached on the
-        next page once the agent exists.
-      </p>
-    </div>
-    <div class="app-page-actions">
-      <a class="btn btn--ghost" href="/agents">Cancel</a>
-    </div>
-  </header>
+{{ breadcrumbs([
+  {"label": "Agents", "href": "/agents"},
+  {"label": "Generate", "href": ""}
+]) }}
 
-  {% if error %}
-    <div class="alert alert--error" data-error-code="{{ error }}">
-      <p>{{ error }}</p>
-    </div>
-  {% endif %}
+<header class="cds-page-head">
+  <div>
+    <h1>Generate agent</h1>
+    <p>
+      Configure model, prompts and guardrails. The agent is created in
+      <span class="cds-tag cds-tag--yellow">stopped</span> state. MCP servers (tools) can be attached now or later.
+    </p>
+  </div>
+  <div class="cds-page-head-actions">
+    <a class="cds-btn cds-btn--ghost" href="/agents"><span>Cancel</span></a>
+  </div>
+</header>
 
-  <form method="post" action="/agents" class="form" data-agent-form>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {% include "agents/partials/agent_form_body.html" %}
-    <div class="btn-group">
-      <button class="btn btn--primary" type="submit">Create agent</button>
-      <a class="btn btn--ghost" href="/agents">Cancel</a>
+{% if error %}
+  <div class="cds-notice cds-notice--error" data-error-code="{{ error }}">
+    <span class="cds-notice-icon">{{ icon("warn") }}</span>
+    <div>
+      <strong>Form rejected</strong>
+      <div class="cds-notice-body"><code>{{ error }}</code></div>
     </div>
-  </form>
-</section>
+  </div>
+{% endif %}
+
+<form method="post" action="/agents" data-agent-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% include "agents/partials/agent_form_body.html" %}
+
+  <footer class="cds-footer">
+    <div class="cds-footer-left">
+      <span class="cds-footer-status" data-footer-status>
+        {{ icon("info") }} <span>Step <span data-step-current>1</span> of 6</span>
+      </span>
+    </div>
+    <div class="cds-footer-right">
+      <button type="button" class="cds-btn cds-btn--ghost" data-step-back disabled>
+        <span>Back</span>
+      </button>
+      <button type="button" class="cds-btn cds-btn--primary" data-step-next>
+        <span data-next-label>Next: Model</span>{{ icon("chev") }}
+      </button>
+      <button type="submit" class="cds-btn cds-btn--primary" data-step-submit hidden>
+        <span>Generate agent</span>{{ icon("rocket") }}
+      </button>
+    </div>
+  </footer>
+</form>
 {% endblock %}

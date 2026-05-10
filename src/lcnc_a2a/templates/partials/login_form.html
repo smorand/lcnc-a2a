@@ -1,13 +1,34 @@
+{% from "_macros.html" import icon %}
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-<div class="form-row">
-  <label class="label" for="email">Email</label>
-  <input id="email" type="text" name="email" class="input" autocomplete="email">
+
+<div class="cds-grid">
+  <div class="cds-grid-col cds-grid-col--12">
+    <div class="cds-field">
+      <label class="cds-label" for="email">Email</label>
+      <div class="cds-input-wrap">
+        <input id="email" type="email" name="email" class="cds-input" autocomplete="email" placeholder="you@example.com">
+      </div>
+    </div>
+  </div>
+  <div class="cds-grid-col cds-grid-col--12">
+    <div class="cds-field">
+      <label class="cds-label" for="name">Name</label>
+      <div class="cds-input-wrap">
+        <input id="name" type="text" name="name" class="cds-input" autocomplete="name" placeholder="Ada Lovelace">
+      </div>
+    </div>
+  </div>
 </div>
-<div class="form-row">
-  <label class="label" for="name">Name</label>
-  <input id="name" type="text" name="name" class="input" autocomplete="name">
-</div>
-{% if error %}<p class="alert alert--error" data-error-code="{{ error }}">{{ error }}</p>{% endif %}
-<div class="btn-group">
-  <button type="submit" class="btn btn--primary">Sign in</button>
+
+{% if error %}
+  <div class="cds-notice cds-notice--error" data-error-code="{{ error }}" style="margin-top:16px;">
+    <span class="cds-notice-icon">{{ icon("warn") }}</span>
+    <div><strong>Sign-in failed</strong><div class="cds-notice-body"><code>{{ error }}</code></div></div>
+  </div>
+{% endif %}
+
+<div class="cds-page-head-actions" style="margin-top:24px;">
+  <button type="submit" class="cds-btn cds-btn--primary">
+    <span>Sign in</span>{{ icon("chev") }}
+  </button>
 </div>

@@ -1,10 +1,17 @@
+{% from "_macros.html" import icon %}
 {% set _key = plain_key|default(one_time_key) %}
-<div class="alert alert--warning api-key-once" data-key-label="{{ label|default('default') }}">
+<div class="cds-notice cds-notice--warning cds-key-once api-key-once" data-key-label="{{ label|default('default') }}">
+  <span class="cds-notice-icon">{{ icon("warn") }}</span>
   <div>
-    <p>Copy this API key now. It will not be shown again in plain text.</p>
-    <code class="api-key-once__value">{{ _key }}</code>
-    <div class="btn-group">
-      <button type="button" class="btn btn--secondary btn--sm" data-copy-target="{{ _key }}">Copy</button>
+    <strong>Copy this API key now</strong>
+    <div class="cds-notice-body">
+      It will not be shown again in plain text.
+      <code class="api-key-once__value">{{ _key }}</code>
+      <div style="margin-top:10px;">
+        <button type="button" class="cds-btn cds-btn--tertiary cds-btn--sm" data-copy-target="{{ _key }}">
+          <span>Copy key</span>{{ icon("copy") }}
+        </button>
+      </div>
     </div>
   </div>
 </div>

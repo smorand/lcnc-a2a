@@ -1,60 +1,74 @@
 /* ============================================================
-   Theme: g100 (IBM Carbon Design System — Gray 100, dark mode)
-   Defines every CSS variable consumed by app.css.
+   Theme: g100 (IBM Carbon Design System, dark)
+
+   Declares every CSS variable consumed by app.css. Swap this
+   file for a different theme to reskin the entire app.
    ============================================================ */
 
 :root {
-  /* Backgrounds */
-  --color-bg:                #161616;
-  --color-bg-hover:          #262626;
-  --color-surface:           #1f1f1f;
-  --color-surface-elevated:  #262626;
+  color-scheme: dark;
+
+  /* Layers (Carbon naming) */
+  --c-bg:               #161616;
+  --c-layer01:          #262626;
+  --c-layer02:          #393939;
+  --c-layer03:          #525252;
+  --c-field01:          #262626;
+  --c-field02:          #393939;
 
   /* Borders */
-  --color-border:            #393939;
-  --color-border-strong:     #525252;
+  --c-border-subtle:    #393939;
+  --c-border-strong:    #6f6f6f;
+  --c-border-inverse:   #f4f4f4;
 
   /* Text */
-  --color-text:              #f4f4f4;
-  --color-text-muted:        #c6c6c6;
-  --color-text-subtle:       #6f6f6f;
+  --c-text:             #f4f4f4;
+  --c-text-secondary:   #c6c6c6;
+  --c-text-helper:      #8d8d8d;
+  --c-text-placeholder: #6f6f6f;
+  --c-text-on-color:    #ffffff;
 
-  /* Links */
-  --color-link:              #78a9ff;
-  --color-link-hover:        #a6c8ff;
+  /* Brand blues */
+  --c-blue40:           #78a9ff;
+  --c-blue50:           #4589ff;
+  --c-blue60:           #0f62fe;
+  --c-blue70:           #0043ce;
+  --c-blue80:           #002d9c;
 
-  /* Brand / interactive */
-  --color-primary:           #0f62fe;
-  --color-primary-hover:     #0353e9;
-  --color-primary-active:    #002d9c;
-  --color-on-primary:        #ffffff;
+  /* Status */
+  --c-success:          #42be65;
+  --c-warning:          #f1c21b;
+  --c-error:            #fa4d56;
+  --c-error-bg:         #2d0709;
 
-  --color-secondary:         #393939;
-  --color-secondary-hover:   #4c4c4c;
+  /* Icon */
+  --c-icon:             #f4f4f4;
+  --c-icon-secondary:   #c6c6c6;
 
-  --color-danger:            #fa4d56;
-  --color-danger-hover:      #ff8389;
-  --color-on-danger:         #ffffff;
+  --c-skeleton:         #353535;
+  --c-focus:            #ffffff;
 
-  --color-success:           #42be65;
-  --color-warning:           #f1c21b;
-  --color-info:              #4589ff;
-
-  --color-focus:             #ffffff;
-
-  /* Inputs */
-  --input-bg:                #262626;
-  --input-bg-hover:          #353535;
-  --input-border:            #393939;
-  --input-border-focus:      #ffffff;
+  /* Tag palette (kind-aware) */
+  --c-tag-blue-bg:      #0043ce;
+  --c-tag-blue-fg:      #d0e2ff;
+  --c-tag-green-bg:     #044317;
+  --c-tag-green-fg:     #a7f0ba;
+  --c-tag-yellow-bg:    #684e00;
+  --c-tag-yellow-fg:    #fdd13a;
+  --c-tag-red-bg:       #750e13;
+  --c-tag-red-fg:       #ffb3b8;
+  --c-tag-gray-bg:      var(--c-layer02);
+  --c-tag-gray-fg:      var(--c-text);
 
   /* Typography */
-  --font-sans:        "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono:        "IBM Plex Mono", "Menlo", "Courier New", monospace;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo,
+               "Courier New", monospace;
   --text-base-size:   14px;
   --text-line-height: 1.5;
 
-  /* Spacing scale */
+  /* Spacing scale (Carbon mini-unit aligned) */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -63,25 +77,23 @@
   --space-6: 2rem;
   --space-7: 3rem;
   --space-8: 4rem;
-  --space-9: 6rem;
 
-  /* Radii */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  /* Radii (Carbon is mostly square) */
+  --radius-sm: 0;
+  --radius-md: 0;
 
   /* Layout */
-  --header-height:     3rem;
-  --content-max-width: 1200px;
+  --rail-w:           48px;
+  --header-h:         48px;
+  --footer-h:         64px;
+  --row-h:            40px;
+  --content-max-w:    1280px;
 
   /* Transitions */
   --transition-fast:     110ms cubic-bezier(0.2, 0, 0.38, 0.9);
   --transition-moderate: 150ms cubic-bezier(0.2, 0, 0.38, 0.9);
-}
 
-html { color-scheme: dark; }
+  /* Shadows */
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}

@@ -1,39 +1,73 @@
+{% from "_macros.html" import icon %}
+{% set _path = request.url.path if request is defined else "" %}
+{% set _is_auth_page = _path == "/login" %}
+{% set _logged_in = user is defined and user %}
 <!DOCTYPE html>
 <html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}LCNC A2A Builder{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
   <link rel="stylesheet" href="/static/css/themes/{{ theme }}.css">
+  <link rel="stylesheet" href="/static/css/app.css">
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   {% block head %}{% endblock %}
 </head>
-<body class="app-shell">
-  <header class="app-header" role="banner">
-    <a class="app-header__brand" href="/agents">
-      <span class="app-header__brand-mark"></span>
-      LCNC A2A Builder
-    </a>
-    <nav class="app-header__nav">{% block nav %}
-      {% if user is defined and user %}
-        <a class="app-header__nav-link" href="/agents" {% if request.url.path == "/agents" %}aria-current="page"{% endif %}>Agents</a>
+<body>
+  <div class="cds-shell {% if _is_auth_page %}cds-shell--auth{% endif %}" data-theme="{{ theme }}">
+    <header class="cds-header" role="banner">
+      <button class="cds-header-icon" type="button" aria-label="Menu" tabindex="-1">{{ icon("menu") }}</button>
+      <a class="cds-header-brand" href="{{ '/agents' if _logged_in else '/login' }}">
+        <span class="cds-brand-mark" aria-hidden="true"></span>
+        <span class="cds-brand-text">LCNC&nbsp;<strong>A2A</strong></span>
+      </a>
+      {% if _logged_in %}
+        <nav class="cds-header-nav" aria-label="Primary">
+          <a class="cds-header-link" href="/agents"
+             {% if _path == "/agents" or _path.startswith("/agents/") %}aria-current="page"{% endif %}>Agents</a>
+        </nav>
       {% endif %}
-    {% endblock %}</nav>
-    <div class="app-header__user">
-      {% if user is defined and user %}
-        <span class="app-header__user-email">{{ user.email }}</span>
-        <form method="post" action="/logout">
-          <input type="hidden" name="csrf_token" value="{{ new_csrf_token() }}">
-          <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
-        </form>
+      <div class="cds-header-spacer"></div>
+      {% if _logged_in %}
+        <span class="cds-header-user">
+          <span class="app-header__user-email" title="{{ user.email }}">{{ user.email }}</span>
+          <form method="post" action="/logout" style="margin:0">
+            <input type="hidden" name="csrf_token" value="{{ new_csrf_token() }}">
+            <button type="submit" class="cds-btn cds-btn--ghost cds-btn--sm" aria-label="Sign out">
+              <span>Sign out</span>
+            </button>
+          </form>
+          {% set _initial = (user.name or user.email or "?")[0]|upper %}
+          <span class="cds-avatar" aria-hidden="true">{{ _initial }}</span>
+        </span>
+      {% else %}
+        <span class="cds-header-user"></span>
       {% endif %}
-    </div>
-  </header>
-  <main class="app-main" role="main">
-    <div class="app-container">
-      {% block content %}{% endblock %}
-    </div>
-  </main>
+    </header>
+
+    {% if not _is_auth_page %}
+      <aside class="cds-rail" aria-label="Sections">
+        <a class="cds-rail-item"
+           href="{{ '/agents' if _logged_in else '/login' }}"
+           aria-label="Agents"
+           {% if _logged_in and (_path == '/agents' or _path.startswith('/agents/')) %}aria-current="page"{% endif %}>{{ icon("bot") }}</a>
+        {% if _logged_in %}
+          {# Future sections (runs, mcp, docs) — placeholder rail items kept for visual parity. #}
+          <a class="cds-rail-item" href="/agents" aria-label="Runs">{{ icon("flow") }}</a>
+          <a class="cds-rail-item" href="/agents" aria-label="Tools">{{ icon("setting") }}</a>
+        {% endif %}
+      </aside>
+    {% endif %}
+
+    <main class="cds-main" role="main">
+      <div class="cds-page {% if _is_auth_page %}cds-page--auth{% endif %}">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

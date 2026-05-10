@@ -1,38 +1,59 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, breadcrumbs, status_tag %}
 {% block title %}Edit {{ agent.name }} — LCNC A2A Builder{% endblock %}
 {% block head %}
   <script src="/static/js/agent_form.js" defer></script>
 {% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>Edit agent</h1>
-      <p class="app-page-title__subtitle">{{ agent.name }} · {{ agent.mode }} · {{ agent.model_id }}</p>
-    </div>
-    <div class="app-page-actions">
-      <a class="btn btn--ghost" href="/agents/{{ agent.id }}">Cancel</a>
-    </div>
-  </header>
+{{ breadcrumbs([
+  {"label": "Agents",     "href": "/agents"},
+  {"label": agent.name,   "href": "/agents/" ~ agent.id},
+  {"label": "Edit",       "href": ""}
+]) }}
 
-  {% if error %}
-    <div class="alert alert--error" data-error-code="{{ error }}">
-      <p>{{ error }}</p>
-    </div>
-  {% endif %}
+<header class="cds-page-head">
+  <div>
+    <h1>Edit agent</h1>
+    <p><code>{{ agent.name }}</code> · <code>{{ agent.mode }}</code> · <code>{{ agent.model_id }}</code> · {{ status_tag(agent.status) }}</p>
+  </div>
+  <div class="cds-page-head-actions">
+    <a class="cds-btn cds-btn--ghost" href="/agents/{{ agent.id }}"><span>Cancel</span></a>
+  </div>
+</header>
 
-  <form method="post" action="/agents/{{ agent.id }}" class="form" data-agent-form>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {% with is_edit = True %}
-      {% include "agents/partials/agent_form_body.html" %}
-    {% endwith %}
-    <div class="btn-group">
-      <button class="btn btn--primary" type="submit">Save changes</button>
-      <a class="btn btn--ghost" href="/agents/{{ agent.id }}">Cancel</a>
+{% if error %}
+  <div class="cds-notice cds-notice--error" data-error-code="{{ error }}">
+    <span class="cds-notice-icon">{{ icon("warn") }}</span>
+    <div>
+      <strong>Form rejected</strong>
+      <div class="cds-notice-body"><code>{{ error }}</code></div>
     </div>
-  </form>
+  </div>
+{% endif %}
 
-  <div id="mcp-list" data-agent-id="{{ agent.id }}"
-       hx-get="/agents/{{ agent.id }}/mcp" hx-trigger="load" hx-swap="innerHTML"></div>
-</section>
+<form method="post" action="/agents/{{ agent.id }}" data-agent-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% with is_edit = True %}
+    {% include "agents/partials/agent_form_body.html" %}
+  {% endwith %}
+
+  <footer class="cds-footer">
+    <div class="cds-footer-left">
+      <span class="cds-footer-status" data-footer-status>
+        {{ icon("info") }} <span>Step <span data-step-current>1</span> of 6</span>
+      </span>
+    </div>
+    <div class="cds-footer-right">
+      <button type="button" class="cds-btn cds-btn--ghost" data-step-back disabled>
+        <span>Back</span>
+      </button>
+      <button type="button" class="cds-btn cds-btn--primary" data-step-next>
+        <span data-next-label>Next: Model</span>{{ icon("chev") }}
+      </button>
+      <button type="submit" class="cds-btn cds-btn--primary" data-step-submit hidden>
+        <span>Save changes</span>{{ icon("check") }}
+      </button>
+    </div>
+  </footer>
+</form>
 {% endblock %}

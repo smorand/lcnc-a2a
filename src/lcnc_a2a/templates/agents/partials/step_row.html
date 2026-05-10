@@ -1,8 +1,9 @@
+{% from "_macros.html" import icon %}
 {% set step = srow.step %}
 <tr class="step-row" data-step-id="{{ step.id }}">
   <td class="step-cell-seq">{{ step.seq }}</td>
   <td class="step-cell-role">{{ step.role }}</td>
-  <td class="step-cell-tool">{{ step.tool_name or "" }}</td>
+  <td class="step-cell-tool">{% if step.tool_name %}<code>{{ step.tool_name }}</code>{% endif %}</td>
   <td class="step-cell-content">{{ step.content or "" }}</td>
   <td class="step-cell-args">
     {%- if srow.args_present -%}
@@ -10,13 +11,13 @@
            {% if srow.args_truncated %}class="truncated"{% endif %}>
         <pre class="step-payload-text">{{ srow.args_display }}</pre>
         {% if srow.args_truncated %}
-          <button
-            type="button"
-            class="btn btn--ghost btn--sm view-full-btn"
-            hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
-            hx-target="#step-{{ step.id }}-args"
-            hx-swap="innerHTML"
-          >View full</button>
+          <button type="button"
+                  class="cds-btn cds-btn--ghost cds-btn--sm view-full-btn"
+                  hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
+                  hx-target="#step-{{ step.id }}-args"
+                  hx-swap="innerHTML">
+            <span>View full</span>{{ icon("view") }}
+          </button>
         {% endif %}
       </div>
     {%- endif -%}
@@ -27,22 +28,20 @@
            {% if srow.result_truncated %}class="truncated"{% endif %}>
         <pre class="step-payload-text">{{ srow.result_display }}</pre>
         {% if srow.result_truncated %}
-          <button
-            type="button"
-            class="btn btn--ghost btn--sm view-full-btn"
-            hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
-            hx-target="#step-{{ step.id }}-result"
-            hx-swap="innerHTML"
-          >View full</button>
+          <button type="button"
+                  class="cds-btn cds-btn--ghost cds-btn--sm view-full-btn"
+                  hx-get="/agents/{{ run.agent_id }}/runs/{{ run.id }}/steps/{{ step.id }}/full"
+                  hx-target="#step-{{ step.id }}-result"
+                  hx-swap="innerHTML">
+            <span>View full</span>{{ icon("view") }}
+          </button>
         {% endif %}
       </div>
     {%- endif -%}
   </td>
   <td class="step-cell-tokens-in">{% if step.tokens_in is not none %}{{ step.tokens_in }}{% endif %}</td>
   <td class="step-cell-tokens-out">{% if step.tokens_out is not none %}{{ step.tokens_out }}{% endif %}</td>
-  <td class="step-cell-similarity">
-    {%- if step.similarity_to_prev is not none -%}{{ "%.4f"|format(step.similarity_to_prev) }}{%- endif -%}
-  </td>
+  <td class="step-cell-similarity">{%- if step.similarity_to_prev is not none -%}{{ "%.4f"|format(step.similarity_to_prev) }}{%- endif -%}</td>
   <td class="step-cell-stage">{% if step.stage is not none %}{{ step.stage }}{% endif %}</td>
   <td class="step-cell-step-id">{% if step.step_id is not none %}{{ step.step_id }}{% endif %}</td>
   <td class="step-cell-step-status">{{ step.step_status or "" }}</td>

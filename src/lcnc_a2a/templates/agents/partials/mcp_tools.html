@@ -1,18 +1,20 @@
-{# Rendered tools list for an MCP server (HTMX partial returned by /discover). #}
-<section class="card mcp-tools" data-server-id="{{ row.id }}">
-  <div class="card__header">
-    <h3 class="card__title">Discovered tools</h3>
-    <span class="form-row__hint">{{ discovered_at.isoformat() }}</span>
+{# Discovered tools list for an MCP server (HTMX partial returned by /discover). #}
+<section class="cds-card mcp-tools" data-server-id="{{ row.id }}">
+  <div class="cds-card__header">
+    <h3 class="cds-card__title">Discovered tools</h3>
+    <span class="cds-helper">{{ discovered_at.isoformat() }}</span>
   </div>
-  {% if tools %}
-    <ul class="mcp-tools__list">
-      {% for tool in tools %}
-        <li class="mcp-tool" data-tool-name="{{ tool.name }}">
-          <strong>{{ tool.name }}</strong> — {{ tool.description }}
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p><em>This server reports no tools.</em></p>
-  {% endif %}
+  <div class="cds-card__body">
+    {% if tools %}
+      <ul class="cds-tool-list mcp-tools__list">
+        {% for tool in tools %}
+          <li class="mcp-tool" data-tool-name="{{ tool.name }}">
+            <strong>{{ tool.name }}</strong> — <span class="cds-text-secondary">{{ tool.description }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p><em>This server reports no tools.</em></p>
+    {% endif %}
+  </div>
 </section>

@@ -1,14 +1,17 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon %}
 {% block title %}Sign in — LCNC A2A Builder{% endblock %}
 {% block content %}
-<section class="app-container--auth">
-  <div class="card">
-    <div class="card__header">
-      <h1 class="card__title">Sign in</h1>
-    </div>
-    <form method="POST" action="/login" class="form" hx-post="/login" hx-target="this" hx-swap="outerHTML">
-      {% include "partials/login_form.html" %}
-    </form>
+<header class="cds-page-head" style="padding-bottom:16px; border-bottom:none; margin-bottom:24px;">
+  <div>
+    <h1 style="font-size:28px;">Sign in</h1>
+    <p>Use the dev provider to bootstrap a session. The user is created on first sign-in.</p>
   </div>
-</section>
+</header>
+
+<div class="cds-content" style="padding:24px;">
+  <form method="POST" action="/login" hx-post="/login" hx-target="this" hx-swap="outerHTML">
+    {% include "partials/login_form.html" %}
+  </form>
+</div>
 {% endblock %}

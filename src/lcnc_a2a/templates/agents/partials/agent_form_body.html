@@ -1,177 +1,595 @@
-{# Shared body for new/edit agent forms.
+{# Shared body for new/edit agent forms, rendered as a Carbon stepper.
+
    Inputs:
      - form: dict of current values (string-typed)
-     - is_edit: bool (defaults to False)
-     - model_preset: string preset name (computed by route, defaults to "openrouter")
+     - is_edit: bool (defaults to false)
+     - model_preset: preset name (computed by route, defaults to "openrouter")
+     - mcp_servers: optional list (only for edit)
+
+   Notes:
+     • The whole 6-step stepper lives inside ONE form. JS toggles which
+       pane is visible. All hidden panes still POST their fields, so the
+       backend sees the complete payload.
+     • Field names, ids, and data-* selectors are preserved so e2e tests
+       and the existing JS controllers still work.
 #}
+{% from "_macros.html" import icon, tag %}
 {% set is_edit = is_edit|default(false) %}
 {% set preset_value = model_preset|default("openrouter") %}
+{% set mode_value = form.mode|default("react") %}
+{% set api_key_source = form.api_key_source|default("input") %}
 
-<div class="form-section">
-  <h2 class="form-section__title">Identity</h2>
-  <div class="form-grid">
-    <div class="form-row">
-      <div class="label-row">
-        <label class="label" for="name">Name</label>
-        <span class="char-counter" data-char-counter="name"></span>
+{# ───────── stepper navigation ───────── #}
+<ol class="cds-stepper" role="list" data-stepper>
+  {% set _steps = [
+    ("identity",   "Identity",   "Name, mode, description"),
+    ("model",      "Model",      "Provider, endpoint, key"),
+    ("prompts",    "Prompts",    "System / planner / executor"),
+    ("tools",      "Tools",      "MCP servers (optional)"),
+    ("guardrails", "Guardrails", "Loops, tokens, similarity"),
+    ("review",     "Review",     "Confirm and " ~ ("save" if is_edit else "generate")),
+  ] %}
+  {% for sid, label, desc in _steps %}
+    <li class="cds-step {% if loop.first %}is-current{% else %}is-incomplete{% endif %}" data-step-item="{{ sid }}">
+      <button class="cds-step-btn" type="button" data-step-go="{{ sid }}">
+        <span class="cds-step-marker">{{ loop.index }}</span>
+        <span class="cds-step-text">
+          <span class="cds-step-label">{{ label }}</span>
+          <span class="cds-step-desc">{{ desc }}</span>
+        </span>
+      </button>
+    </li>
+  {% endfor %}
+</ol>
+
+<div class="cds-content" data-stepper-panes>
+  {# ─────────────────── 1. IDENTITY ─────────────────── #}
+  <section class="cds-step-pane is-active" data-step-pane="identity">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Identity</h2>
+        <p class="cds-section-desc">How this agent appears in your dashboard and to A2A clients.</p>
       </div>
-      <input class="input" id="name" name="name" value="{{ form.name|default('', true) }}" maxlength="120" required>
-      <p class="form-row__hint">Required, 1 to 120 characters; unique per user.</p>
-    </div>
+    </header>
 
-    <div class="form-row">
-      <div class="label-row">
-        <label class="label label-with-tip" for="mode">
-          Mode
-          <span class="tooltip" tabindex="0" data-tip="simple : single LLM call, optionally with tools.&#10;react : iterative reason+act loop with similarity stop and guardrails.&#10;plan_execute : planner JSON, stage-parallel executor, bounded replans.">i</span>
-        </label>
-      </div>
-      <select class="select" id="mode" name="mode">
-        {% for m in ["simple", "react", "plan_execute"] %}
-          <option value="{{ m }}" {% if form.mode == m %}selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="form-row form-row--full">
-      <div class="label-row">
-        <label class="label" for="description">Description</label>
-        <span class="char-counter" data-char-counter="description"></span>
-      </div>
-      <textarea class="textarea" id="description" name="description" maxlength="2000">{{ form.description|default('', true) }}</textarea>
-      <p class="form-row__hint">Optional, up to 2000 characters.</p>
-    </div>
-  </div>
-</div>
-
-<div class="form-section">
-  <h2 class="form-section__title">Model</h2>
-  <div class="form-grid">
-    <div class="form-row">
-      <label class="label" for="model_preset">Preset</label>
-      <select class="select" id="model_preset" name="model_preset">
-        <option value="openrouter" {% if preset_value == "openrouter" %}selected{% endif %}>OpenRouter</option>
-        <option value="localhost"  {% if preset_value == "localhost"  %}selected{% endif %}>Localhost (mlx_lm)</option>
-        <option value="other"      {% if preset_value == "other"      %}selected{% endif %}>Other (OpenAI-compatible)</option>
-      </select>
-      <p class="form-row__hint">Selects the provider type and prefills the endpoint.</p>
-    </div>
-
-    <div class="form-row">
-      <label class="label" for="model_id">Model ID</label>
-      <input class="input" id="model_id" name="model_id" value="{{ form.model_id|default('', true) }}" maxlength="200" required>
-      <p class="form-row__hint">e.g. <code>anthropic/claude-sonnet-4-5</code>, <code>mlx-community/Qwen3.6-27B-4bit</code>.</p>
-    </div>
-
-    <input type="hidden" id="model_provider" name="model_provider" value="{{ form.model_provider|default('openrouter', true) }}">
-
-    <div class="form-row form-row--full">
-      <label class="label" for="model_endpoint">Endpoint URL</label>
-      <input class="input" id="model_endpoint" name="model_endpoint" value="{{ form.model_endpoint|default('https://openrouter.ai/api/v1', true) }}">
-    </div>
-
-    <div class="form-row form-row--full" data-api-key-row>
-      <div class="api-key-row">
-        <div class="api-key-source-col" data-api-key-source>
-          <span class="label">API key source</span>
-          <div class="radio-group">
-            {% set source = form.api_key_source|default('input', true) %}
-            <label class="radio-option">
-              <input type="radio" name="api_key_source" value="input" {% if source == 'input' %}checked{% endif %}>
-              <span>Type on the right</span>
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="api_key_source" value="env_snapshot" {% if source == 'env_snapshot' %}checked{% endif %}>
-              <span>Snapshot from env at save</span>
-              <span class="radio-option__hint">Resolved once and stored encrypted. Rejected if env var is unset at save.</span>
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="api_key_source" value="env_dynamic" {% if source == 'env_dynamic' %}checked{% endif %}>
-              <span>Read env at every request</span>
-              <span class="radio-option__hint">Live lookup. The run fails with <code>api_key_env_not_found_at_runtime</code> if the env var is missing.</span>
-            </label>
+    <div class="cds-grid">
+      <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="name">Name<span class="cds-req">*</span></label>
+            <span class="cds-counter" data-char-counter="name"></span>
           </div>
-          <div class="form-row" data-env-var-name-wrap>
-            <label class="label" for="provider_api_key_env_var_name">Env var name</label>
-            <input class="input" id="provider_api_key_env_var_name"
-                   name="provider_api_key_env_var_name"
-                   value="{{ form.provider_api_key_env_var_name|default('', true) }}"
-                   placeholder="OPENROUTER_API_KEY"
-                   autocomplete="off">
-            <p class="form-row__hint">Required for snapshot or runtime env reads (uppercase, digits and underscore).</p>
+          <div class="cds-input-wrap">
+            <input class="cds-input" id="name" name="name"
+                   value="{{ form.name|default('', true) }}"
+                   maxlength="120" required placeholder="market-research-agent">
           </div>
+          <p class="cds-helper">1 to 120 characters, unique per user. Used in the agent card and A2A endpoint URL.</p>
         </div>
-        <div class="api-key-input" data-api-key-wrap>
-          <label class="label" for="provider_api_key">
-            Provider API key{% if is_edit %} (leave blank to keep current){% endif %}
-          </label>
-          <input class="input" id="provider_api_key" name="provider_api_key" type="password" autocomplete="off"
-                 {% if is_edit %}placeholder="********"{% endif %}>
+      </div>
+      <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-field">
+          <label class="cds-label" for="mode">Mode</label>
+          <div class="cds-select-wrap">
+            <select class="cds-select" id="mode" name="mode">
+              <option value="simple"        {% if mode_value == "simple"       %}selected{% endif %}>Simple — single LLM call (with optional tools)</option>
+              <option value="react"         {% if mode_value == "react"        %}selected{% endif %}>ReAct — reason+act loop with similarity stop</option>
+              <option value="plan_execute"  {% if mode_value == "plan_execute" %}selected{% endif %}>Plan &amp; Execute — planner JSON, parallel stages</option>
+            </select>
+            <span class="cds-select-chev">{{ icon("chev") }}</span>
+          </div>
+          <p class="cds-helper">Determines which executor handles requests and which prompt fields are required.</p>
+        </div>
+      </div>
+      <div class="cds-grid-col cds-grid-col--12">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="description">Description</label>
+            <span class="cds-counter" data-char-counter="description"></span>
+          </div>
+          <textarea class="cds-textarea" id="description" name="description" maxlength="2000"
+                    placeholder="Researches public sources for company background, summarizes findings, and answers follow-ups.">{{ form.description|default('', true) }}</textarea>
+          <p class="cds-helper">Optional, up to 2000 characters. Surfaced in the dashboard card and the A2A agent card JSON.</p>
         </div>
       </div>
     </div>
 
-    {# Custom HTTP headers — only for "Other (OpenAI-compatible)" preset.
-       Up to 5 slots; empty rows are silently ignored on submit. #}
-    <div class="form-row form-row--full" data-show-on-preset="other">
-      <span class="label">Custom HTTP headers</span>
-      <p class="form-row__hint">
-        Optional. Sent on every LLM call (e.g. <code>X-Org-Id</code>, custom
-        auth schemes). Up to {{ form.extra_header_slots|default([], true)|length or 5 }} slots; leave unused rows blank.
-      </p>
-      <div class="extra-headers">
-        {% set _slots = form.extra_header_slots|default([('','')] * 5, true) %}
-        {% for name, value in _slots %}
-          <div class="extra-header-row">
-            <input class="input" name="header_name_{{ loop.index0 }}"
-                   value="{{ name }}" placeholder="Header name" maxlength="80" autocomplete="off">
-            <input class="input" name="header_value_{{ loop.index0 }}"
-                   value="{{ value }}" placeholder="Header value" maxlength="500" autocomplete="off">
-          </div>
+    <div class="cds-mode-picker">
+      <div class="cds-section-sub">Pick a mode</div>
+      <div class="cds-mode-grid" data-mode-picker>
+        {% set _modes = [
+          ("simple",       "Simple",          "1 call",
+           "One LLM call. Tools optional. Lowest latency, least flexible.",
+           ["Quick lookups", "Format conversions", "Q&A"]),
+          ("react",        "ReAct",           "Loop",
+           "Iterative reason → act → observe loop. Stops on similarity or max loops.",
+           ["Tool routing", "Multi-hop research", "Decision trees"]),
+          ("plan_execute", "Plan & Execute",  "DAG",
+           "Planner emits JSON DAG; executor runs stages in parallel.",
+           ["Heavy I/O", "Parallel scrapes", "Long horizons"]),
+        ] %}
+        {% for mid, mtitle, mtag, mdesc, mlist in _modes %}
+          <button type="button"
+                  class="cds-mode-card {% if mode_value == mid %}is-selected{% endif %}"
+                  data-mode-card="{{ mid }}">
+            <div class="cds-mode-card-head">
+              <span class="cds-mode-card-title">{{ mtitle }}</span>
+              {{ tag(mtag, "blue" if mode_value == mid else "outline") }}
+            </div>
+            <p class="cds-mode-card-body">{{ mdesc }}</p>
+            <ul class="cds-mode-card-list">
+              {% for s in mlist %}<li>{{ icon("check", 12) }} {{ s }}</li>{% endfor %}
+            </ul>
+          </button>
         {% endfor %}
       </div>
     </div>
-  </div>
+  </section>
+
+  {# ─────────────────── 2. MODEL ─────────────────── #}
+  <section class="cds-step-pane" data-step-pane="model">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Model</h2>
+        <p class="cds-section-desc">The LLM that powers this agent. Prompts and responses are never logged.</p>
+      </div>
+    </header>
+
+    <div class="cds-grid">
+      <div class="cds-grid-col cds-grid-col--12">
+        <span class="cds-label">Preset</span>
+        <div class="cds-content-switcher" data-preset-switcher>
+          {% set _presets = [
+            ("openrouter", "OpenRouter"),
+            ("localhost",  "Localhost (mlx_lm)"),
+            ("other",      "OpenAI-compatible"),
+          ] %}
+          {% for pid, plabel in _presets %}
+            <button type="button"
+                    class="cds-cs-btn {% if preset_value == pid %}is-selected{% endif %}"
+                    data-preset="{{ pid }}">{{ plabel }}</button>
+          {% endfor %}
+        </div>
+        <select class="sr-only" id="model_preset" name="model_preset" aria-hidden="true" tabindex="-1">
+          <option value="openrouter" {% if preset_value == "openrouter" %}selected{% endif %}>openrouter</option>
+          <option value="localhost"  {% if preset_value == "localhost"  %}selected{% endif %}>localhost</option>
+          <option value="other"      {% if preset_value == "other"      %}selected{% endif %}>other</option>
+        </select>
+        <p class="cds-helper" style="margin-top:8px;">Sets provider type, prefills endpoint, and (for OpenRouter) pins the env var name.</p>
+      </div>
+
+      <div class="cds-grid-col cds-grid-col--7">
+        <div class="cds-field">
+          <label class="cds-label" for="model_endpoint">Endpoint URL<span class="cds-req">*</span></label>
+          <div class="cds-input-wrap">
+            <input class="cds-input cds-input--mono" id="model_endpoint" name="model_endpoint"
+                   value="{{ form.model_endpoint|default('https://openrouter.ai/api/v1', true) }}"
+                   placeholder="https://api.example.com/v1">
+          </div>
+          <p class="cds-helper">Full URL including <code>/v1</code> (or equivalent path). <code>localhost</code> endpoints skip the API-key check.</p>
+        </div>
+      </div>
+      <div class="cds-grid-col cds-grid-col--5">
+        <div class="cds-field">
+          <label class="cds-label" for="model_id">Model ID<span class="cds-req">*</span></label>
+          <div class="cds-input-wrap">
+            <input class="cds-input cds-input--mono" id="model_id" name="model_id"
+                   value="{{ form.model_id|default('', true) }}"
+                   maxlength="200" required placeholder="org/model-name">
+          </div>
+          <p class="cds-helper">e.g. <code>anthropic/claude-sonnet-4-5</code> or <code>mlx-community/Qwen3-30B-4bit</code>.</p>
+        </div>
+      </div>
+
+      <input type="hidden" id="model_provider" name="model_provider"
+             value="{{ form.model_provider|default('openrouter', true) }}">
+
+      {# API key block #}
+      <div class="cds-grid-col cds-grid-col--12" data-api-key-row>
+        <div class="cds-key-card">
+          <div class="cds-key-left" data-api-key-source>
+            <span class="cds-label">API key source</span>
+            <div class="cds-radios">
+              <label class="cds-radio {% if api_key_source == 'input' %}is-checked{% endif %}">
+                <input type="radio" name="api_key_source" value="input" {% if api_key_source == 'input' %}checked{% endif %}>
+                <span class="cds-radio-mark"></span>
+                <span class="cds-radio-content">
+                  <span class="cds-radio-label">Type the key on the right</span>
+                  <span class="cds-radio-hint">Stored encrypted at rest (Fernet).</span>
+                </span>
+              </label>
+              <label class="cds-radio {% if api_key_source == 'env_snapshot' %}is-checked{% endif %}">
+                <input type="radio" name="api_key_source" value="env_snapshot" {% if api_key_source == 'env_snapshot' %}checked{% endif %}>
+                <span class="cds-radio-mark"></span>
+                <span class="cds-radio-content">
+                  <span class="cds-radio-label">Snapshot from env at save</span>
+                  <span class="cds-radio-hint">Resolved once on save, stored encrypted. Rejected if env var is unset at save.</span>
+                </span>
+              </label>
+              <label class="cds-radio {% if api_key_source == 'env_dynamic' %}is-checked{% endif %}">
+                <input type="radio" name="api_key_source" value="env_dynamic" {% if api_key_source == 'env_dynamic' %}checked{% endif %}>
+                <span class="cds-radio-mark"></span>
+                <span class="cds-radio-content">
+                  <span class="cds-radio-label">Read env at every request</span>
+                  <span class="cds-radio-hint">Live lookup; missing var fails the run with <code>api_key_env_not_found_at_runtime</code>.</span>
+                </span>
+              </label>
+            </div>
+            <div class="cds-env-var" data-env-var-name-wrap>
+              <div class="cds-field">
+                <label class="cds-label" for="provider_api_key_env_var_name">Env var name</label>
+                <div class="cds-input-wrap">
+                  <input class="cds-input cds-input--mono" id="provider_api_key_env_var_name"
+                         name="provider_api_key_env_var_name"
+                         value="{{ form.provider_api_key_env_var_name|default('', true) }}"
+                         placeholder="OPENROUTER_API_KEY" autocomplete="off">
+                </div>
+                <p class="cds-helper">Required for snapshot or runtime env reads (uppercase, digits, underscore).</p>
+              </div>
+            </div>
+          </div>
+          <div class="cds-key-right" data-api-key-wrap>
+            <div class="cds-field">
+              <label class="cds-label" for="provider_api_key">
+                Provider API key{% if is_edit %} (leave blank to keep current){% endif %}
+              </label>
+              <div class="cds-input-wrap">
+                <input class="cds-input cds-input--mono" id="provider_api_key" name="provider_api_key"
+                       type="password" autocomplete="off"
+                       {% if is_edit %}placeholder="********"{% else %}placeholder="sk-or-v1-..."{% endif %}>
+              </div>
+              <p class="cds-helper">Encrypted with Fernet, never returned by the API after save.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Custom HTTP headers (only for "other" preset). #}
+      <div class="cds-grid-col cds-grid-col--12" data-show-on-preset="other">
+        <div class="cds-byo">
+          <div class="cds-byo-head">
+            <span class="cds-label">Custom HTTP headers</span>
+            <span class="cds-helper">Optional. Sent on every LLM call. Up to 5 rows; blank rows are ignored.</span>
+          </div>
+          <table class="cds-table">
+            <thead>
+              <tr><th style="width:35%">Name</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {% set _slots = form.extra_header_slots|default([('','')] * 5, true) %}
+              {% for name, value in _slots %}
+                <tr>
+                  <td><input class="cds-input cds-input--cell cds-input--mono" name="header_name_{{ loop.index0 }}"
+                             value="{{ name }}" placeholder="X-Org-Id" maxlength="80" autocomplete="off"></td>
+                  <td><input class="cds-input cds-input--cell cds-input--mono" name="header_value_{{ loop.index0 }}"
+                             value="{{ value }}" placeholder="org_abc123" maxlength="500" autocomplete="off"></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─────────────────── 3. PROMPTS ─────────────────── #}
+  <section class="cds-step-pane" data-step-pane="prompts">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Prompts</h2>
+        <p class="cds-section-desc">Simple and ReAct use a single system prompt; Plan &amp; Execute uses a planner + executor pair.</p>
+      </div>
+    </header>
+
+    <div data-show-on-mode="simple,react">
+      <div class="cds-field">
+        <div class="cds-label-row">
+          <label class="cds-label" for="system_prompt">System prompt</label>
+          <span class="cds-counter" data-char-counter="system_prompt"></span>
+        </div>
+        <textarea class="cds-textarea cds-textarea--lg cds-textarea--mono"
+                  id="system_prompt" name="system_prompt"
+                  maxlength="40000"
+                  placeholder="You are a helpful assistant...">{{ form.system_prompt|default('', true) }}</textarea>
+        <p class="cds-helper">Prepended to every LLM call as a system message. Up to 40 000 characters.</p>
+      </div>
+    </div>
+
+    <div data-show-on-mode="plan_execute">
+      <div class="cds-field">
+        <div class="cds-label-row">
+          <label class="cds-label" for="planner_prompt">Planner prompt</label>
+          <span class="cds-counter" data-char-counter="planner_prompt"></span>
+        </div>
+        <textarea class="cds-textarea cds-textarea--lg cds-textarea--mono"
+                  id="planner_prompt" name="planner_prompt"
+                  maxlength="40000"
+                  placeholder='Return JSON: {"steps": [{"id":"s1","depends_on":[],"tool":"...","args":{...}}]}'>{{ form.planner_prompt|default('', true) }}</textarea>
+        <p class="cds-helper">The planner must return strict JSON. The validator rejects invalid plans.</p>
+      </div>
+      <div style="height:16px"></div>
+      <div class="cds-field">
+        <div class="cds-label-row">
+          <label class="cds-label" for="executor_prompt">Executor prompt</label>
+          <span class="cds-counter" data-char-counter="executor_prompt"></span>
+        </div>
+        <textarea class="cds-textarea cds-textarea--lg cds-textarea--mono"
+                  id="executor_prompt" name="executor_prompt"
+                  maxlength="40000"
+                  placeholder="Run a single plan step using the named tool with supplied args.">{{ form.executor_prompt|default('', true) }}</textarea>
+        <p class="cds-helper">Run once per step with prior results in context. Output is a short textual summary.</p>
+      </div>
+    </div>
+  </section>
+
+  {# ─────────────────── 4. TOOLS ─────────────────── #}
+  <section class="cds-step-pane" data-step-pane="tools">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Tools</h2>
+        <p class="cds-section-desc">Optional. Each MCP server's tools become callable. {% if is_edit %}Attach more from the catalog or your own.{% else %}Pick a starter set now or attach servers later.{% endif %}</p>
+      </div>
+    </header>
+
+    {% if is_edit and mcp_servers is defined and mcp_servers %}
+      <div class="cds-section-sub">Attached</div>
+      <div class="cds-tools-grid">
+        {% for entry in mcp_servers %}
+          {% set s = entry.row %}
+          <a class="cds-tool-card is-selected" href="/agents/{{ agent.id }}/mcp/{{ s.id }}" style="text-decoration:none;">
+            <div class="cds-tool-head">
+              <div class="cds-tool-title">{{ icon("flow") }} <span>{{ s.transport }}</span></div>
+              {{ tag(entry.tool_count ~ " tools", "blue") }}
+            </div>
+            <p class="cds-tool-desc">
+              <code class="cds-mono">{% if s.transport == "stdio" %}{{ s.command }}{% else %}{{ s.url }}{% endif %}</code>
+            </p>
+            <div class="cds-tool-meta">
+              <span>{{ s.transport.upper() }}</span>
+              {% if s.discovered_at %}
+                <span>·</span>
+                <span>discovered {{ s.discovered_at.strftime("%Y-%m-%d %H:%M") }}</span>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if mcp_catalog is defined and mcp_catalog %}
+      {% set _selected_ids = mcp_preset_ids|default([], true) %}
+      {% set _attached_ids = mcp_attached_preset_ids|default([], true) %}
+      <div class="cds-section-sub">{% if is_edit %}Quick add from catalog{% else %}Suggested servers{% endif %}</div>
+      {% if not is_edit %}
+        <p class="cds-helper" style="margin-bottom:12px;">Tick any of the curated servers below to attach them to this agent on creation. You can edit or remove them anytime afterwards.</p>
+      {% endif %}
+      <div class="cds-tools-grid">
+        {% for entry in mcp_catalog %}
+          {% set _is_attached = entry.id in _attached_ids %}
+          {% if is_edit and _is_attached %}
+            <a class="cds-tool-card is-selected"
+               href="/agents/{{ agent.id }}/mcp/new?preset={{ entry.id }}"
+               style="text-decoration:none;"
+               aria-disabled="true">
+              <div class="cds-tool-head">
+                <div class="cds-tool-title">{{ icon("flow") }} <span>{{ entry.name }}</span></div>
+                {{ tag("attached", "green") }}
+              </div>
+              <p class="cds-tool-desc">{{ entry.description }}</p>
+              <div class="cds-tool-meta">
+                <span>{{ entry.transport.upper() }}</span>
+                <span>·</span>
+                <span class="cds-truncate cds-mono">{{ entry.command or entry.url }}</span>
+              </div>
+              <p class="cds-helper" style="margin-top:4px;">Already attached. Click to add another instance with overrides.</p>
+            </a>
+          {% else %}
+            <label class="cds-tool-card cds-tool-card--toggle" data-preset-card="{{ entry.id }}">
+              <input type="checkbox" name="mcp_preset_ids" value="{{ entry.id }}"
+                     class="sr-only" data-preset-checkbox
+                     {% if entry.id in _selected_ids %}checked{% endif %}>
+              <div class="cds-tool-head">
+                <div class="cds-tool-title">{{ icon("flow") }} <span>{{ entry.name }}</span></div>
+                <span class="cds-tag cds-tag--outline" data-preset-tag>available</span>
+              </div>
+              <p class="cds-tool-desc">{{ entry.description }}</p>
+              <div class="cds-tool-meta">
+                <span>{{ entry.transport.upper() }}</span>
+                <span>·</span>
+                <span class="cds-truncate cds-mono">{{ entry.command or entry.url }}</span>
+              </div>
+              {% if entry.hint %}
+                <p class="cds-helper" style="margin-top:4px;">{{ entry.hint }}</p>
+              {% endif %}
+            </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% if is_edit %}
+        <p class="cds-helper" style="margin-top:8px;">
+          Tick a card and click <strong>Save changes</strong> to attach it. Already-attached presets stay clickable as a shortcut to spin up a second instance with overrides.
+        </p>
+      {% endif %}
+    {% endif %}
+
+    <div class="cds-byo" style="margin-top:16px;">
+      <div class="cds-byo-head">
+        <span class="cds-label">Custom server</span>
+        <span class="cds-helper">{% if is_edit %}Add a custom stdio command or streamable-http URL not in the catalog.{% else %}You can add custom servers (filesystem, GitHub, anything else) once the agent is created.{% endif %}</span>
+      </div>
+      {% if is_edit %}
+        <a class="cds-btn cds-btn--tertiary cds-btn--sm" href="/agents/{{ agent.id }}/mcp/new">
+          <span>Add custom MCP server</span>{{ icon("add") }}
+        </a>
+      {% endif %}
+    </div>
+  </section>
+
+  {# ─────────────────── 5. GUARDRAILS ─────────────────── #}
+  <section class="cds-step-pane" data-step-pane="guardrails">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Guardrails</h2>
+        <p class="cds-section-desc">Hard limits that protect both your bill and your users from runaway loops.</p>
+      </div>
+    </header>
+
+    <div class="cds-grid">
+      <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="max_loops">Max loops</label>
+            <span class="cds-counter" id="max_loops_display">{{ form.max_loops|default('30', true) }}</span>
+          </div>
+          <div class="cds-slider">
+            <span class="cds-slider-end">1</span>
+            <input type="range" min="1" max="50" step="1"
+                   value="{{ form.max_loops|default('30', true) }}"
+                   data-slider-for="max_loops">
+            <span class="cds-slider-end">50</span>
+            <input class="cds-slider-num" type="number" min="1" max="50" step="1"
+                   id="max_loops" name="max_loops"
+                   value="{{ form.max_loops|default('30', true) }}">
+          </div>
+          <p class="cds-helper">Total iterations across all executors. The run is force-finished when reached.</p>
+        </div>
+      </div>
+
+      <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="max_tokens">Max tokens</label>
+            <span class="cds-counter" id="max_tokens_display">{{ form.max_tokens|default('1000000', true) }}</span>
+          </div>
+          <div class="cds-slider">
+            <span class="cds-slider-end">100</span>
+            <input type="range" min="100" max="1000000" step="1000"
+                   value="{{ form.max_tokens|default('1000000', true) }}"
+                   data-slider-for="max_tokens">
+            <span class="cds-slider-end">1 000 000</span>
+            <input class="cds-slider-num" type="number" min="100" max="1000000" step="1000"
+                   id="max_tokens" name="max_tokens"
+                   value="{{ form.max_tokens|default('1000000', true) }}">
+          </div>
+          <p class="cds-helper">Sum of input + output tokens across the entire request.</p>
+        </div>
+      </div>
+
+      <div class="cds-grid-col cds-grid-col--6" data-show-on-mode="react">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="similarity_threshold">Similarity threshold</label>
+            <span class="cds-counter" id="similarity_threshold_display">{{ form.similarity_threshold|default('0.85', true) }}</span>
+          </div>
+          <div class="cds-slider">
+            <span class="cds-slider-end">0.50</span>
+            <input type="range" min="0.50" max="0.99" step="0.01"
+                   value="{{ form.similarity_threshold|default('0.85', true) }}"
+                   data-slider-for="similarity_threshold">
+            <span class="cds-slider-end">0.99</span>
+            <input class="cds-slider-num" type="number" min="0.50" max="0.99" step="0.01"
+                   id="similarity_threshold" name="similarity_threshold"
+                   value="{{ form.similarity_threshold|default('0.85', true) }}">
+          </div>
+          <p class="cds-helper">ReAct halts when two consecutive thoughts exceed this cosine similarity.</p>
+        </div>
+      </div>
+
+      <div class="cds-grid-col cds-grid-col--6" data-show-on-mode="plan_execute">
+        <div class="cds-field">
+          <div class="cds-label-row">
+            <label class="cds-label" for="max_steps">Max steps</label>
+            <span class="cds-counter" id="max_steps_display">{{ form.max_steps|default('20', true) }}</span>
+          </div>
+          <div class="cds-slider">
+            <span class="cds-slider-end">1</span>
+            <input type="range" min="1" max="50" step="1"
+                   value="{{ form.max_steps|default('20', true) }}"
+                   data-slider-for="max_steps">
+            <span class="cds-slider-end">50</span>
+            <input class="cds-slider-num" type="number" min="1" max="50" step="1"
+                   id="max_steps" name="max_steps"
+                   value="{{ form.max_steps|default('20', true) }}">
+          </div>
+          <p class="cds-helper">Total steps the planner may emit across all replans.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ─────────────────── 6. REVIEW ─────────────────── #}
+  <section class="cds-step-pane" data-step-pane="review">
+    <header class="cds-section-head">
+      <div>
+        <h2 class="cds-h2">Review &amp; {{ "save" if is_edit else "generate" }}</h2>
+        <p class="cds-section-desc">Final check before {{ "saving" if is_edit else "creation" }}.</p>
+      </div>
+    </header>
+
+    <div class="cds-review-grid" data-review>
+      <section class="cds-review-card">
+        <header><h3>Identity</h3></header>
+        <div class="cds-review-card-body">
+          <div class="cds-kv"><span class="cds-kv-k">Name</span><span class="cds-kv-v is-mono" data-review-name>—</span></div>
+          <div class="cds-kv"><span class="cds-kv-k">Mode</span><span class="cds-kv-v"><span class="cds-tag cds-tag--blue" data-review-mode>—</span></span></div>
+          <div class="cds-kv"><span class="cds-kv-k">Description</span><span class="cds-kv-v cds-clamp" data-review-description>—</span></div>
+        </div>
+      </section>
+
+      <section class="cds-review-card">
+        <header><h3>Model</h3></header>
+        <div class="cds-review-card-body">
+          <div class="cds-kv"><span class="cds-kv-k">Provider</span><span class="cds-kv-v is-mono" data-review-provider>—</span></div>
+          <div class="cds-kv"><span class="cds-kv-k">Endpoint</span><span class="cds-kv-v is-mono" data-review-endpoint>—</span></div>
+          <div class="cds-kv"><span class="cds-kv-k">Model ID</span><span class="cds-kv-v is-mono" data-review-model-id>—</span></div>
+          <div class="cds-kv"><span class="cds-kv-k">API key</span><span class="cds-kv-v" data-review-api-key>—</span></div>
+        </div>
+      </section>
+
+      <section class="cds-review-card">
+        <header><h3>Prompts</h3></header>
+        <div class="cds-review-card-body" data-review-prompts>—</div>
+      </section>
+
+      <section class="cds-review-card">
+        <header><h3>Guardrails</h3></header>
+        <div class="cds-review-card-body" data-review-guardrails>
+          <div class="cds-kv"><span class="cds-kv-k">Max loops</span><span class="cds-kv-v" data-review-max-loops>—</span></div>
+          <div class="cds-kv"><span class="cds-kv-k">Max tokens</span><span class="cds-kv-v" data-review-max-tokens>—</span></div>
+          <div class="cds-kv" data-review-similarity-row><span class="cds-kv-k">Similarity</span><span class="cds-kv-v" data-review-similarity>—</span></div>
+          <div class="cds-kv" data-review-max-steps-row><span class="cds-kv-k">Max steps</span><span class="cds-kv-v" data-review-max-steps>—</span></div>
+        </div>
+      </section>
+
+      <section class="cds-review-card">
+        <header><h3>Tools</h3></header>
+        <div class="cds-review-card-body">
+          {% if is_edit %}
+            {% if mcp_servers is defined and mcp_servers %}
+              <ul class="cds-tool-list">
+                {% for entry in mcp_servers %}
+                  <li>{{ icon("flow", 12) }} <strong>{{ entry.row.transport }}</strong> · {{ entry.tool_count }} tools</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="cds-helper">No MCP servers attached.</span>
+            {% endif %}
+          {% else %}
+            <div data-review-tools-presets>
+              <span class="cds-helper">No catalog presets selected.</span>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="cds-review-card is-wide">
+        <header><h3>A2A agent card preview</h3></header>
+        <div class="cds-review-card-body">
+          <pre class="cds-json" data-review-card>—</pre>
+        </div>
+      </section>
+    </div>
+  </section>
 </div>
 
-<div class="form-section">
-  <h2 class="form-section__title">Prompts</h2>
-  <div class="form-row" data-show-on-mode="simple,react">
-    <label class="label" for="system_prompt">System prompt (Simple, ReAct)</label>
-    <textarea class="textarea textarea--lg" id="system_prompt" name="system_prompt">{{ form.system_prompt|default('', true) }}</textarea>
-  </div>
-  <div class="form-row" data-show-on-mode="plan_execute">
-    <label class="label" for="planner_prompt">Planner prompt (Plan &amp; Execute)</label>
-    <textarea class="textarea textarea--lg" id="planner_prompt" name="planner_prompt">{{ form.planner_prompt|default('', true) }}</textarea>
-  </div>
-  <div class="form-row" data-show-on-mode="plan_execute">
-    <label class="label" for="executor_prompt">Executor prompt (Plan &amp; Execute)</label>
-    <textarea class="textarea textarea--lg" id="executor_prompt" name="executor_prompt">{{ form.executor_prompt|default('', true) }}</textarea>
-  </div>
-</div>
-
-<div class="form-section">
-  <h2 class="form-section__title">Guardrails</h2>
-  <div class="form-grid">
-    <div class="form-row">
-      <label class="label" for="max_loops">Max loops</label>
-      <input class="input" id="max_loops" name="max_loops" value="{{ form.max_loops|default('30', true) }}">
-      <p class="form-row__hint">Range 1 to 50.</p>
-    </div>
-    <div class="form-row">
-      <label class="label" for="max_tokens">Max tokens</label>
-      <input class="input" id="max_tokens" name="max_tokens" value="{{ form.max_tokens|default('1000000', true) }}">
-      <p class="form-row__hint">Range 100 to 1 000 000.</p>
-    </div>
-    <div class="form-row" data-show-on-mode="react">
-      <label class="label" for="similarity_threshold">Similarity threshold (ReAct)</label>
-      <input class="input" id="similarity_threshold" name="similarity_threshold" value="{{ form.similarity_threshold|default('0.85', true) }}">
-      <p class="form-row__hint">Range 0.50 to 0.99; ReAct stops when consecutive thoughts exceed this similarity.</p>
-    </div>
-    <div class="form-row" data-show-on-mode="plan_execute">
-      <label class="label" for="max_steps">Max steps (Plan &amp; Execute)</label>
-      <input class="input" id="max_steps" name="max_steps" value="{{ form.max_steps|default('20', true) }}">
-      <p class="form-row__hint">Range 1 to 50; total steps the planner may produce across all replans.</p>
-    </div>
-  </div>
-</div>
+{# Sticky footer is rendered by the page (new.html / edit.html). #}

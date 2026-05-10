@@ -1,19 +1,28 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, breadcrumbs %}
 {% block title %}Runs — {{ agent.name }} — LCNC A2A Builder{% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>Runs for {{ agent.name }}</h1>
-      <p class="app-page-title__subtitle">Per-run trace, tokens, cost. Expand a row for the full step list.</p>
-    </div>
-    <div class="app-page-actions">
-      <a class="btn btn--ghost" href="/agents/{{ agent.id }}">Back to agent</a>
-    </div>
-  </header>
+{{ breadcrumbs([
+  {"label": "Agents",    "href": "/agents"},
+  {"label": agent.name,  "href": "/agents/" ~ agent.id},
+  {"label": "Runs",      "href": ""}
+]) }}
 
-  {% if rows %}
-    <table class="data-table runs-table">
+<header class="cds-page-head">
+  <div>
+    <h1>Runs for {{ agent.name }}</h1>
+    <p>Per-run trace, tokens, cost. Expand a row for the full step list.</p>
+  </div>
+  <div class="cds-page-head-actions">
+    <a class="cds-btn cds-btn--ghost cds-btn--sm" href="/agents/{{ agent.id }}">
+      <span>Back to agent</span>
+    </a>
+  </div>
+</header>
+
+{% if rows %}
+  <div class="cds-card">
+    <table class="cds-table runs-table">
       <thead>
         <tr>
           <th>Started</th>
@@ -35,10 +44,10 @@
         {% endfor %}
       </tbody>
     </table>
-  {% else %}
-    <div class="empty-state runs-empty">
-      <p>Send a message to /agents/{{ agent.id }} to see runs here.</p>
-    </div>
-  {% endif %}
-</section>
+  </div>
+{% else %}
+  <div class="cds-empty runs-empty">
+    <p>Send a message to /agents/{{ agent.id }} to see runs here.</p>
+  </div>
+{% endif %}
 {% endblock %}

@@ -1,24 +1,19 @@
+{% from "_macros.html" import status_tag, tag %}
 {% set agent = row.agent %}
 {% set m = row.metrics %}
 <tr class="agent-row" data-agent-id="{{ agent.id }}">
   <td><a href="/agents/{{ agent.id }}">{{ agent.name }}</a></td>
-  <td>{{ agent.mode }}</td>
-  <td>{{ agent.model_id }}</td>
-  <td>{{ agent.status }}</td>
+  <td>{{ tag(agent.mode, "outline") }}</td>
+  <td><code>{{ agent.model_id }}</code></td>
+  <td>{{ status_tag(agent.status) }}</td>
   <td class="agent-cell-requests">{{ m.requests }}</td>
   <td class="agent-cell-tokens-in">{{ m.tokens_in }}</td>
   <td class="agent-cell-tokens-out">{{ m.tokens_out }}</td>
-  <td class="agent-cell-avg-duration">
-    {% if m.avg_duration_ms is not none %}{{ "%.0f"|format(m.avg_duration_ms) }}{% else %}n/a{% endif %}
-  </td>
-  <td class="agent-cell-avg-loops">
-    {% if m.avg_loops is not none %}{{ "%.2f"|format(m.avg_loops) }}{% else %}n/a{% endif %}
-  </td>
+  <td class="agent-cell-avg-duration">{% if m.avg_duration_ms is not none %}{{ "%.0f"|format(m.avg_duration_ms) }}{% else %}n/a{% endif %}</td>
+  <td class="agent-cell-avg-loops">{% if m.avg_loops is not none %}{{ "%.2f"|format(m.avg_loops) }}{% else %}n/a{% endif %}</td>
   <td class="agent-cell-total-time">{{ m.total_time_ms }}</td>
-  <td class="agent-cell-cost">
-    {% if m.cost_has_unknown or m.total_cost_usd is none %}n/a{% else %}{{ "%.6f"|format(m.total_cost_usd) }}{% endif %}
-  </td>
+  <td class="agent-cell-cost">{% if m.cost_has_unknown or m.total_cost_usd is none %}n/a{% else %}{{ "%.6f"|format(m.total_cost_usd) }}{% endif %}</td>
   <td class="agent-cell-last-run">
-    {% if m.last_run_at %}{{ m.last_run_at.isoformat() }}{% else %}-{% endif %}
+    {% if m.last_run_at %}{{ m.last_run_at.isoformat() }}{% else %}—{% endif %}
   </td>
 </tr>

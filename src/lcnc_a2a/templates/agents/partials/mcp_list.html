@@ -1,37 +1,41 @@
-{# List of MCP servers attached to the agent (HTMX partial). #}
-<section class="card mcp-list" id="mcp-list-{{ agent.id }}">
-  <div class="card__header">
-    <h2 class="card__title">MCP servers</h2>
-    <a class="btn btn--secondary btn--sm" href="/agents/{{ agent.id }}/mcp/new">Add MCP server</a>
+{% from "_macros.html" import icon %}
+<section class="cds-card mcp-list" id="mcp-list-{{ agent.id }}">
+  <div class="cds-card__header">
+    <h2 class="cds-card__title">MCP servers</h2>
+    <a class="cds-btn cds-btn--tertiary cds-btn--sm" href="/agents/{{ agent.id }}/mcp/new">
+      <span>Add MCP server</span>{{ icon("add") }}
+    </a>
   </div>
-  {% if servers %}
-    <table class="data-table">
-      <thead>
-        <tr><th>Transport</th><th>Endpoint</th><th class="num">Tools</th><th>Discovered at</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for entry in servers %}
-          <tr class="mcp-server-row" data-server-id="{{ entry.row.id }}">
-            <td>{{ entry.row.transport }}</td>
-            <td><code>{% if entry.row.transport == "stdio" %}{{ entry.row.command }}{% else %}{{ entry.row.url }}{% endif %}</code></td>
-            <td class="num">{{ entry.tool_count }}</td>
-            <td>{% if entry.row.discovered_at %}{{ entry.row.discovered_at.isoformat() }}{% else %}<em>never</em>{% endif %}</td>
-            <td>
-              <a class="btn btn--ghost btn--sm" href="/agents/{{ agent.id }}/mcp/{{ entry.row.id }}">View</a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <div class="empty-state">
-      <p><em>No MCP servers attached yet.</em></p>
-      <p class="form-row__hint">
-        Attach an MCP server to give the agent tools (filesystem, git, web
-        search, ...). The agent works without any if you only need plain
-        chat.
-      </p>
-      <a class="btn btn--primary btn--sm" href="/agents/{{ agent.id }}/mcp/new">+ Add MCP server</a>
-    </div>
-  {% endif %}
+  <div class="cds-card__body cds-card__body--flush">
+    {% if servers %}
+      <table class="cds-table">
+        <thead>
+          <tr><th>Transport</th><th>Endpoint</th><th class="num">Tools</th><th>Discovered at</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for entry in servers %}
+            <tr class="mcp-server-row" data-server-id="{{ entry.row.id }}">
+              <td>{{ entry.row.transport }}</td>
+              <td><code>{% if entry.row.transport == "stdio" %}{{ entry.row.command }}{% else %}{{ entry.row.url }}{% endif %}</code></td>
+              <td class="num">{{ entry.tool_count }}</td>
+              <td>{% if entry.row.discovered_at %}{{ entry.row.discovered_at.isoformat() }}{% else %}<em>never</em>{% endif %}</td>
+              <td>
+                <a class="cds-btn cds-btn--ghost cds-btn--sm" href="/agents/{{ agent.id }}/mcp/{{ entry.row.id }}">
+                  <span>View</span>{{ icon("view") }}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="cds-empty">
+        <p><em>No MCP servers attached yet.</em></p>
+        <p class="cds-helper">Attach an MCP server to give the agent tools (filesystem, web search, ...). Plain chat works without any.</p>
+        <a class="cds-btn cds-btn--tertiary cds-btn--sm" href="/agents/{{ agent.id }}/mcp/new">
+          <span>Add MCP server</span>{{ icon("add") }}
+        </a>
+      </div>
+    {% endif %}
+  </div>
 </section>

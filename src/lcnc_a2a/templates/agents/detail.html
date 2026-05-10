@@ -1,81 +1,99 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, breadcrumbs, status_tag, tag, kv %}
 {% block title %}{{ agent.name }} — LCNC A2A Builder{% endblock %}
 {% block head %}<script src="/static/js/agent_endpoints.js" defer></script>{% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>{{ agent.name }}</h1>
-      <p class="app-page-title__subtitle">
-        Mode <code>{{ agent.mode }}</code> · Model <code>{{ agent.model_id }}</code> ·
-        Status <span class="badge badge--{{ agent.status }}">{{ agent.status }}</span>
-      </p>
-    </div>
-    <div class="app-page-actions">
-      <a class="btn btn--secondary" href="/agents/{{ agent.id }}/edit">Edit</a>
-      <a class="btn btn--ghost" href="/agents/{{ agent.id }}/runs">Runs</a>
-      {% if agent.status == "started" %}
-        <form method="post" action="/agents/{{ agent.id }}/stop" style="display:inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn btn--secondary" type="submit">Stop</button>
-        </form>
-      {% else %}
-        <form method="post" action="/agents/{{ agent.id }}/start" style="display:inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn btn--primary" type="submit">Start</button>
-        </form>
-      {% endif %}
-      <form method="post" action="/agents/{{ agent.id }}" style="display:inline" onsubmit="return confirm('Delete this agent? All keys, runs and contexts will be removed.');">
+{{ breadcrumbs([
+  {"label": "Agents",    "href": "/agents"},
+  {"label": agent.name,  "href": ""}
+]) }}
+
+<header class="cds-page-head">
+  <div>
+    <h1>{{ agent.name }}</h1>
+    <p>
+      Mode {{ tag(agent.mode, "outline") }} · Model <code>{{ agent.model_id }}</code> · {{ status_tag(agent.status) }}
+    </p>
+  </div>
+  <div class="cds-page-head-actions">
+    <a class="cds-btn cds-btn--tertiary cds-btn--sm" href="/agents/{{ agent.id }}/edit">
+      <span>Edit</span>{{ icon("edit") }}
+    </a>
+    <a class="cds-btn cds-btn--ghost cds-btn--sm" href="/agents/{{ agent.id }}/runs">
+      <span>Runs</span>{{ icon("flow") }}
+    </a>
+    {% if agent.status == "started" %}
+      <form method="post" action="/agents/{{ agent.id }}/stop" style="display:inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="_method" value="DELETE">
-        <button class="btn btn--danger" type="submit">Delete</button>
+        <button class="cds-btn cds-btn--secondary cds-btn--sm" type="submit">
+          <span>Stop</span>{{ icon("stop") }}
+        </button>
       </form>
-    </div>
-  </header>
+    {% else %}
+      <form method="post" action="/agents/{{ agent.id }}/start" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="cds-btn cds-btn--primary cds-btn--sm" type="submit">
+          <span>Start</span>{{ icon("play") }}
+        </button>
+      </form>
+    {% endif %}
+    <form method="post" action="/agents/{{ agent.id }}" style="display:inline"
+          onsubmit="return confirm('Delete this agent? All keys, runs and contexts will be removed.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="_method" value="DELETE">
+      <button class="cds-btn cds-btn--danger cds-btn--sm" type="submit">
+        <span>Delete</span>{{ icon("trash") }}
+      </button>
+    </form>
+  </div>
+</header>
 
-  {% if one_time_key %}
-    {% include "agents/partials/api_key_once.html" with context %}
-  {% endif %}
+{% if one_time_key %}
+  {% include "agents/partials/api_key_once.html" with context %}
+{% endif %}
 
-  <div
-    class="card"
-    data-a2a-endpoints
-    data-agent-id="{{ agent.id }}"
-    data-csrf-token="{{ csrf_token }}"
-  >
-    <div class="card__header"><h2 class="card__title">A2A endpoint</h2></div>
+<div class="cds-card"
+     data-a2a-endpoints
+     data-agent-id="{{ agent.id }}"
+     data-csrf-token="{{ csrf_token }}">
+  <div class="cds-card__header">
+    <h2 class="cds-card__title">A2A endpoint</h2>
+  </div>
+  <div class="cds-card__body">
     <dl class="kv-list">
       <dt>Base URL</dt>
       <dd>
         <span class="endpoint-row">
           <code class="endpoint-row__url" data-endpoint="base"></code>
-          <button type="button" class="btn btn--ghost btn--sm" data-copy-target="base">Copy</button>
+          <button type="button" class="cds-btn cds-btn--ghost cds-btn--sm" data-copy-target="base">
+            <span>Copy</span>{{ icon("copy") }}
+          </button>
         </span>
       </dd>
       <dt>
         API key
-        <span
-          class="tooltip"
-          tabindex="0"
-          data-tip="Send this key in an HTTP header:&#10;Authorization: Bearer &lt;API_KEY&gt;&#10;to authenticate calls to the agent."
-        >i</span>
+        <span class="tooltip" tabindex="0"
+              data-tip="Send this key in an HTTP header:&#10;Authorization: Bearer &lt;API_KEY&gt;&#10;to authenticate calls to the agent.">i</span>
       </dt>
       <dd>
         <span class="endpoint-row">
           <code class="endpoint-row__url" data-endpoint="api-key">********</code>
-          <button
-            type="button"
-            class="btn btn--ghost btn--sm"
-            data-copy-target="api-key"
-            title="Mints a fresh key and copies it to your clipboard."
-          >Copy</button>
+          <button type="button" class="cds-btn cds-btn--ghost cds-btn--sm"
+                  data-copy-target="api-key"
+                  title="Mints a fresh key and copies it to your clipboard.">
+            <span>Copy</span>{{ icon("copy") }}
+          </button>
         </span>
       </dd>
     </dl>
   </div>
+</div>
 
-  <div class="card">
-    <div class="card__header"><h2 class="card__title">Configuration</h2></div>
+<div class="cds-card">
+  <div class="cds-card__header">
+    <h2 class="cds-card__title">Configuration</h2>
+  </div>
+  <div class="cds-card__body">
     <dl class="kv-list">
       <dt>Preset</dt><dd>{{ model_preset_label }}</dd>
       <dt>Model ID</dt><dd><code>{{ agent.model_id }}</code></dd>
@@ -92,15 +110,19 @@
       {% endif %}
     </dl>
   </div>
+</div>
 
-  {% with servers=mcp_servers %}
-    {% include "agents/partials/mcp_list.html" %}
-  {% endwith %}
+{% with servers=mcp_servers %}
+  {% include "agents/partials/mcp_list.html" %}
+{% endwith %}
 
-  <div class="card">
-    <div class="card__header"><h2 class="card__title">API keys</h2></div>
+<div class="cds-card">
+  <div class="cds-card__header">
+    <h2 class="cds-card__title">API keys</h2>
+  </div>
+  <div class="cds-card__body cds-card__body--flush">
     {% if keys %}
-      <table class="data-table">
+      <table class="cds-table">
         <thead>
           <tr><th>Label</th><th>Last 4</th><th>Created</th><th>Status</th></tr>
         </thead>
@@ -110,14 +132,17 @@
               <td>{{ key.label }}</td>
               <td><code>{{ key.key_last4 }}</code></td>
               <td>{{ key.created_at.isoformat() }}</td>
-              <td>{% if key.revoked_at %}<span class="badge">revoked</span>{% else %}<span class="badge badge--running">active</span>{% endif %}</td>
+              <td>
+                {% if key.revoked_at %}{{ tag("revoked", "gray") }}
+                {% else %}{{ tag("active", "green") }}{% endif %}
+              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     {% else %}
-      <p class="app-page-title__subtitle">No API keys yet.</p>
+      <div class="cds-empty"><p>No API keys yet.</p></div>
     {% endif %}
   </div>
-</section>
+</div>
 {% endblock %}

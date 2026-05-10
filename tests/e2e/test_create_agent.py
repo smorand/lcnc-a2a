@@ -258,3 +258,43 @@ async def test_e2e_019_unicode_name_and_prompt_persisted(
         record = row.mappings().one()
         assert record["name"] == "アナリスト 📊"
         assert record["system_prompt"] == "あなたは…"
+
+
+async def test_create_agent_with_mcp_catalog_presets(
+    login_as,
+    csrf_token: str,
+    db_engine: AsyncEngine,
+) -> None:
+    """Posting with mcp_preset_ids attaches the matching catalog servers on creation."""
+    client: httpx.AsyncClient = await login_as("alice@example.com", name="Alice")
+
+    response = await client.post(
+        "/agents",
+        data={
+            "name": "agent-with-presets",
+            "mode": "react",
+            "model_provider": "openrouter",
+            "model_endpoint": "https://openrouter.ai/api/v1",
+            "model_id": "anthropic/claude-sonnet-4-5",
+            "provider_api_key": "sk-or-v1-test",
+            "system_prompt": REACT_PROMPT,
+            "csrf_token": csrf_token,
+            # Multi-valued: ``mcp_preset_ids`` from the catalog. Unknown ids are
+            # silently ignored, not rejected.
+            "mcp_preset_ids": ["duckduckgo", "context7", "no-such-preset"],
+        },
+    )
+    assert response.status_code == 302, response.text
+    agent_id = uuid.UUID(response.headers["location"].rsplit("/", 1)[-1])
+
+    async with db_engine.begin() as conn:
+        rows = await conn.execute(
+            text("SELECT transport, command, url FROM agent_mcp_servers WHERE agent_id = :aid ORDER BY transport"),
+            {"aid": str(agent_id)},
+        )
+        attached = [(r["transport"], r["command"], r["url"]) for r in rows.mappings()]
+
+    # DuckDuckGo (stdio) + Context7 (streamable_http); unknown id ignored.
+    assert ("stdio", "uvx duckduckgo-mcp-server", None) in attached
+    assert ("streamable_http", None, "https://mcp.context7.com/mcp") in attached
+    assert len(attached) == 2

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -27,7 +28,8 @@ from lcnc_a2a.services.agents import (
     update_agent,
 )
 from lcnc_a2a.services.api_keys import create_agent_api_key
-from lcnc_a2a.services.mcp_discovery import list_servers_for_agent
+from lcnc_a2a.services.mcp_catalog import CATALOG, get_entry
+from lcnc_a2a.services.mcp_discovery import create_server, list_servers_for_agent
 from lcnc_a2a.services.runs import list_running_run_ids_for_agent
 
 ONE_TIME_KEY_COOKIE_PREFIX = "agent_key_once::"
@@ -49,6 +51,41 @@ async def _extract_extra_header_pairs(request: Request) -> list[tuple[str, str]]
             )
         )
     return pairs
+
+
+async def _extract_mcp_preset_ids(request: Request) -> list[str]:
+    """Read all ``mcp_preset_ids`` form values, keep only ids known to the catalog."""
+    form = await request.form()
+    raw = form.getlist("mcp_preset_ids") if hasattr(form, "getlist") else []
+    seen: list[str] = []
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        if value and value not in seen and get_entry(value) is not None:
+            seen.append(value)
+    return seen
+
+
+def _attached_catalog_ids(mcp_rows: Sequence[object]) -> list[str]:
+    """Return catalog ids whose ``command``/``url`` matches an attached server.
+
+    Used by the edit Tools step to mark catalog cards as already-attached
+    instead of available, which prevents the user from creating duplicates.
+    """
+    attached: list[str] = []
+    for entry in CATALOG:
+        for row in mcp_rows:
+            if getattr(row, "transport", None) != entry.transport:
+                continue
+            if entry.transport == "stdio":
+                if entry.command and getattr(row, "command", None) == entry.command:
+                    attached.append(entry.id)
+                    break
+            else:
+                if entry.url and getattr(row, "url", None) == entry.url:
+                    attached.append(entry.id)
+                    break
+    return attached
 
 
 _PRESET_LABELS = {
@@ -96,6 +133,8 @@ async def new_agent_form(
             "error": None,
             "form": {},
             "model_preset": "openrouter",
+            "mcp_catalog": CATALOG,
+            "mcp_preset_ids": [],
         },
     )
 
@@ -151,6 +190,7 @@ async def create_agent_submit(
     }
 
     extra_header_pairs = await _extract_extra_header_pairs(request)
+    selected_preset_ids = await _extract_mcp_preset_ids(request)
 
     try:
         data = validate_create_agent_form(
@@ -173,7 +213,7 @@ async def create_agent_submit(
             max_steps=max_steps,
         )
     except AgentFormError as exc:
-        return _render_form_error(templates, request, csrf, raw_form, exc.code)
+        return _render_form_error(templates, request, csrf, raw_form, exc.code, selected_preset_ids)
 
     try:
         agent = await create_agent(
@@ -198,9 +238,26 @@ async def create_agent_submit(
             max_steps=data.max_steps,
         )
     except AgentNameTakenError:
-        return _render_form_error(templates, request, csrf, raw_form, "name_taken")
+        return _render_form_error(templates, request, csrf, raw_form, "name_taken", selected_preset_ids)
 
     _row, plain_key = await create_agent_api_key(db, agent_id=agent.id, label="default")
+
+    for preset_id in selected_preset_ids:
+        entry = get_entry(preset_id)
+        if entry is None:
+            continue
+        await create_server(
+            db,
+            agent_id=agent.id,
+            transport=entry.transport,
+            command=entry.command,
+            env=dict(entry.env) if entry.env else None,
+            cwd=None,
+            url=entry.url,
+            headers=dict(entry.headers) if entry.headers else None,
+            crypto=crypto,
+        )
+
     await db.commit()
 
     response: Response = RedirectResponse(url=f"/agents/{agent.id}", status_code=302)
@@ -301,6 +358,15 @@ async def edit_agent_form(
         "max_steps": "" if agent.max_steps is None else str(agent.max_steps),
         "extra_header_slots": _padded_header_slots(extra_headers),
     }
+
+    mcp_rows = await list_servers_for_agent(db, agent_id=agent.id)
+    mcp_servers: list[dict[str, object]] = []
+    for row in mcp_rows:
+        cache = row.tools_cache or {}
+        tools = cache.get("tools") if isinstance(cache, dict) else None
+        mcp_servers.append({"row": row, "tool_count": len(tools) if isinstance(tools, list) else 0})
+    attached_preset_ids = _attached_catalog_ids(mcp_rows)
+
     return templates.TemplateResponse(
         request,
         "agents/edit.html",
@@ -311,6 +377,9 @@ async def edit_agent_form(
             "model_preset": _infer_model_preset(agent.model_provider, agent.model_endpoint),
             "csrf_token": csrf.generate(),
             "error": None,
+            "mcp_catalog": CATALOG,
+            "mcp_servers": mcp_servers,
+            "mcp_attached_preset_ids": attached_preset_ids,
         },
     )
 
@@ -413,6 +482,7 @@ async def update_or_delete_agent(
     }
 
     extra_header_pairs = await _extract_extra_header_pairs(request)
+    selected_preset_ids = await _extract_mcp_preset_ids(request)
 
     try:
         data = validate_create_agent_form(
@@ -436,7 +506,7 @@ async def update_or_delete_agent(
             require_provider_api_key=False,
         )
     except AgentFormError as exc:
-        return _render_edit_form_error(templates, request, csrf, agent, raw_form, exc.code)
+        return _render_edit_form_error(templates, request, csrf, agent, raw_form, exc.code, selected_preset_ids)
 
     try:
         await update_agent(
@@ -461,7 +531,28 @@ async def update_or_delete_agent(
             max_steps=data.max_steps,
         )
     except AgentNameTakenError:
-        return _render_edit_form_error(templates, request, csrf, agent, raw_form, "name_taken")
+        return _render_edit_form_error(templates, request, csrf, agent, raw_form, "name_taken", selected_preset_ids)
+
+    if selected_preset_ids:
+        existing_rows = await list_servers_for_agent(db, agent_id=agent.id)
+        already_attached = set(_attached_catalog_ids(existing_rows))
+        for preset_id in selected_preset_ids:
+            if preset_id in already_attached:
+                continue
+            entry = get_entry(preset_id)
+            if entry is None:
+                continue
+            await create_server(
+                db,
+                agent_id=agent.id,
+                transport=entry.transport,
+                command=entry.command,
+                env=dict(entry.env) if entry.env else None,
+                cwd=None,
+                url=entry.url,
+                headers=dict(entry.headers) if entry.headers else None,
+                crypto=crypto,
+            )
 
     await db.commit()
     return RedirectResponse(url=f"/agents/{agent.id}", status_code=302)
@@ -559,12 +650,23 @@ def _render_form_error(
     csrf: CSRFManager,
     form: dict[str, str],
     error: str,
+    mcp_preset_ids: list[str] | None = None,
 ) -> Response:
-    preset = _infer_model_preset(form.get("model_provider", "openrouter"), form.get("model_endpoint", ""))
+    preset = _infer_model_preset(
+        form.get("model_provider", "openrouter"),
+        form.get("model_endpoint", ""),
+    )
     return templates.TemplateResponse(
         request,
         "agents/new.html",
-        {"csrf_token": csrf.generate(), "error": error, "form": form, "model_preset": preset},
+        {
+            "csrf_token": csrf.generate(),
+            "error": error,
+            "form": form,
+            "model_preset": preset,
+            "mcp_catalog": CATALOG,
+            "mcp_preset_ids": mcp_preset_ids or [],
+        },
         status_code=400,
     )
 
@@ -576,6 +678,7 @@ def _render_edit_form_error(
     agent: object,
     form: dict[str, str],
     error: str,
+    mcp_preset_ids: list[str] | None = None,
 ) -> Response:
     preset = _infer_model_preset(form.get("model_provider", "openrouter"), form.get("model_endpoint", ""))
     return templates.TemplateResponse(
@@ -587,6 +690,10 @@ def _render_edit_form_error(
             "form": form,
             "agent": agent,
             "model_preset": preset,
+            "mcp_catalog": CATALOG,
+            "mcp_servers": [],
+            "mcp_attached_preset_ids": [],
+            "mcp_preset_ids": mcp_preset_ids or [],
         },
         status_code=400,
     )

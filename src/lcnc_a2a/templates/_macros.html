@@ -1,0 +1,108 @@
+{# ============================================================
+   Carbon-style component macros for LCNC A2A Builder.
+
+   Inline SVG icons (16-px line, viewBox 0 0 16 16) so we don't
+   ship an icon library. All visual attributes come from the
+   theme variables, never inlined here.
+   ============================================================ #}
+
+{% set _icons = {
+  "menu":     "M2 7h12v1H2zM2 4h12v1H2zM2 10h12v1H2zM2 13h12v1H2z",
+  "user":     "M8 1a4 4 0 1 0 4 4 4 4 0 0 0-4-4zm0 7a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm6 7v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1h1v-1a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1z",
+  "search":   "M14.7 13.3l-3.4-3.4a5.5 5.5 0 1 0-1.4 1.4l3.4 3.4zM2 6.5A4.5 4.5 0 1 1 6.5 11 4.5 4.5 0 0 1 2 6.5z",
+  "bell":     "M14 11.4V8a6 6 0 1 0-12 0v3.4L0 13v1h16v-1zm-1 1.6H3v-1l1-.6V8a5 5 0 1 1 10 0v3.4l1 .6zM6.5 15h3a1.5 1.5 0 0 1-3 0z",
+  "bot":      "M14 6h-3V3a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3H2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM6 3h4v3H6zm8 10H2V7h12zM5 9h1v2H5zm5 0h1v2h-1z",
+  "add":      "M9 7V2H7v5H2v2h5v5h2V9h5V7z",
+  "edit":     "M2 12.5l-1 3.5 3.5-1 7-7-2.5-2.5zM10 4l2.5 2.5L14 5l-2.5-2.5z",
+  "rocket":   "M14.5 1.5h-2c-2 0-3.7 1-4.7 2.5L4.5 9 2 9.5l1.5 1.5L1 13.5 2.5 15 5 12.5 6.5 14 7 11.5l5-3.3c1.5-1 2.5-2.7 2.5-4.7zM10 7a1 1 0 1 1 1-1 1 1 0 0 1-1 1z",
+  "chev":     "M6 12l4-4-4-4",
+  "chev-down":"M3 5l5 5 5-5",
+  "check":    "M6.5 11.5L3 8l1-1 2.5 2.5L12 4l1 1z",
+  "warn":     "M8 1L0 15h16zm0 12a1 1 0 1 1 1-1 1 1 0 0 1-1 1zm1-3H7V6h2z",
+  "copy":     "M11 1H3a1 1 0 0 0-1 1v9h1V2h8zm2 3H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zm0 10H6V5h7z",
+  "view":     "M8 3a8.6 8.6 0 0 0-7.6 4.7L0 8l.4.3A8.6 8.6 0 0 0 8 13a8.6 8.6 0 0 0 7.6-4.7L16 8l-.4-.3A8.6 8.6 0 0 0 8 3zm0 9a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm0-5a2 2 0 1 0 2 2 2 2 0 0 0-2-2z",
+  "trash":    "M5 1v1H1v1h1v11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V3h1V2h-4V1zm8 13H3V3h10zM5 5h1v7H5zm2 0h1v7H7zm2 0h1v7H9zm2 0h1v7h-1z",
+  "setting":  "M13.7 9c0-.3.1-.6.1-1s0-.7-.1-1l1.6-1.2-1.6-2.7-1.9.7a4.6 4.6 0 0 0-1.7-1L9.6 1H6.4l-.5 1.8a4.6 4.6 0 0 0-1.7 1L2.3 3.1.7 5.8 2.3 7c0 .3-.1.7-.1 1s0 .7.1 1L.7 10.2l1.6 2.7 1.9-.7a4.6 4.6 0 0 0 1.7 1l.5 1.8h3.2l.5-1.8a4.6 4.6 0 0 0 1.7-1l1.9.7 1.6-2.7zM8 11a3 3 0 1 1 3-3 3 3 0 0 1-3 3z",
+  "doc":      "M13 4.4L9.6 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V4.4zM9 2l3 3H9zm3 12H3V2h5v4h4z",
+  "flow":     "M14 11h-1V5a1 1 0 0 0-1-1H9V2H7v2H4a1 1 0 0 0-1 1v6H2v3h3v-3H4V5h3v2h2V5h3v6h-1v3h3z",
+  "shield":   "M8 1L1 4v4.5C1 12 4 14.7 8 15c4-.3 7-3 7-6.5V4zm0 13c-3.4-.3-6-2.6-6-5.5V5l6-2.6L14 5v3.5c0 2.9-2.6 5.2-6 5.5z",
+  "lock":     "M12 7V4a4 4 0 0 0-8 0v3H3v8h10V7zM6 4a2 2 0 0 1 4 0v3H6zm6 10H4V8h8z",
+  "refresh":  "M14.7 5L13 6.7A6 6 0 1 0 14 8h-1a5 5 0 1 1-1.6-3.6L9.3 6.5H15V1z",
+  "close":    "M12 4.7L11.3 4 8 7.3 4.7 4 4 4.7 7.3 8 4 11.3l.7.7L8 8.7 11.3 12l.7-.7L8.7 8z",
+  "info":     "M8 1a7 7 0 1 0 7 7 7 7 0 0 0-7-7zm0 13A6 6 0 1 1 14 8a6 6 0 0 1-6 6zm0-9a1 1 0 1 0 1 1 1 1 0 0 0-1-1zm1 3H7v5h2z",
+  "link":     "M9 12H6a4 4 0 1 1 0-8h3v1H6a3 3 0 0 0 0 6h3zM7 7h6v1H7zm0 1V7zm-1-3h3a4 4 0 0 1 0 8H10v-1h2a3 3 0 0 0 0-6H10z",
+  "play":     "M4 2v12l10-6z",
+  "stop":     "M3 3h10v10H3z"
+} %}
+
+{% macro icon(name, size=16) -%}
+  <svg viewBox="0 0 16 16" width="{{ size }}" height="{{ size }}" fill="currentColor" aria-hidden="true" style="flex:none">
+    <path d="{{ _icons.get(name, _icons['info']) }}"/>
+  </svg>
+{%- endmacro %}
+
+{% macro tag(label, kind="gray", attrs="") -%}
+  <span class="cds-tag cds-tag--{{ kind }}" {{ attrs|safe }}>{{ label }}</span>
+{%- endmacro %}
+
+{% macro status_tag(status) -%}
+  {% if status == "started"   %}{{ tag(status, "green") }}
+  {% elif status == "stopped" %}{{ tag(status, "yellow") }}
+  {% elif status == "error"   %}{{ tag(status, "red") }}
+  {% elif status == "running" %}{{ tag(status, "blue") }}
+  {% elif status == "completed" %}{{ tag(status, "green") }}
+  {% elif status == "failed"  %}{{ tag(status, "red") }}
+  {% elif status == "canceled" %}{{ tag(status, "yellow") }}
+  {% elif status == "input_required" %}{{ tag(status, "blue") }}
+  {% else %}{{ tag(status, "gray") }}{% endif %}
+{%- endmacro %}
+
+{% macro notice(kind="info", icon_name="info", title="", body="") -%}
+  <div class="cds-notice cds-notice--{{ kind }}">
+    <span class="cds-notice-icon">{{ icon(icon_name) }}</span>
+    <div>
+      {% if title %}<strong>{{ title }}</strong>{% endif %}
+      <div class="cds-notice-body">{{ body|safe }}</div>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% macro breadcrumbs(items) -%}
+  <nav class="cds-breadcrumbs" aria-label="Breadcrumb">
+    {% for item in items -%}
+      {% if item.href and not loop.last %}
+        <a href="{{ item.href }}">{{ item.label }}</a>
+      {% else %}
+        <a aria-current="page">{{ item.label }}</a>
+      {% endif %}
+      {% if not loop.last %}<span class="cds-breadcrumbs-sep">/</span>{% endif %}
+    {%- endfor %}
+  </nav>
+{%- endmacro %}
+
+{% macro page_head(title, description="", actions=None) -%}
+  <header class="cds-page-head">
+    <div>
+      <h1>{{ title }}</h1>
+      {% if description %}<p>{{ description|safe }}</p>{% endif %}
+    </div>
+    {% if actions %}<div class="cds-page-head-actions">{{ actions }}</div>{% endif %}
+  </header>
+{%- endmacro %}
+
+{% macro section_head(title, desc="", action=None) -%}
+  <header class="cds-section-head">
+    <div>
+      <h2 class="cds-h2">{{ title }}</h2>
+      {% if desc %}<p class="cds-section-desc">{{ desc|safe }}</p>{% endif %}
+    </div>
+    {% if action %}<div>{{ action }}</div>{% endif %}
+  </header>
+{%- endmacro %}
+
+{% macro kv(label, value, mono=False) -%}
+  <div class="cds-kv">
+    <span class="cds-kv-k">{{ label }}</span>
+    <span class="cds-kv-v {% if mono %}is-mono{% endif %}">{{ value|safe }}</span>
+  </div>
+{%- endmacro %}

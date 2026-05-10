@@ -1,19 +1,24 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, breadcrumbs, page_head %}
 {% block title %}Agents — LCNC A2A Builder{% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>Your agents</h1>
-      <p class="app-page-title__subtitle">Signed in as {{ user.email }} · last {{ window_days|default(30) }} days metrics</p>
-    </div>
-    <div class="app-page-actions">
-      <a class="btn btn--primary" href="/agents/new">Create agent</a>
-    </div>
-  </header>
+{{ breadcrumbs([{"label": "Agents", "href": ""}]) }}
 
-  {% if rows %}
-    <table class="data-table">
+<header class="cds-page-head">
+  <div>
+    <h1>Your agents</h1>
+    <p>Signed in as <code>{{ user.email }}</code>. Aggregations cover the last <strong>{{ window_days|default(30) }}</strong> days.</p>
+  </div>
+  <div class="cds-page-head-actions">
+    <a class="cds-btn cds-btn--primary" href="/agents/new">
+      <span>Create agent</span>{{ icon("add") }}
+    </a>
+  </div>
+</header>
+
+{% if rows %}
+  <div class="cds-card">
+    <table class="cds-table data-table">
       <thead>
         <tr>
           <th>Name</th>
@@ -23,9 +28,9 @@
           <th class="num">Requests</th>
           <th class="num">Tokens in</th>
           <th class="num">Tokens out</th>
-          <th class="num">Avg duration (ms)</th>
+          <th class="num">Avg ms</th>
           <th class="num">Avg loops</th>
-          <th class="num">Total time (ms)</th>
+          <th class="num">Total ms</th>
           <th class="num">Cost (USD)</th>
           <th>Last run</th>
         </tr>
@@ -36,13 +41,11 @@
         {% endfor %}
       </tbody>
     </table>
-  {% else %}
-    <div class="empty-state">
-      <p>No agents yet. Create your first agent to get started.</p>
-      <div class="btn-group">
-        <a class="btn btn--primary" href="/agents/new">Create agent</a>
-      </div>
-    </div>
-  {% endif %}
-</section>
+  </div>
+{% else %}
+  <div class="cds-empty">
+    <p>No agents yet. Create your first agent to expose an A2A endpoint.</p>
+    <a class="cds-btn cds-btn--primary cds-btn--sm" href="/agents/new"><span>Create agent</span>{{ icon("add") }}</a>
+  </div>
+{% endif %}
 {% endblock %}

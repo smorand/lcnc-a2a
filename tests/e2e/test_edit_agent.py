@@ -281,3 +281,83 @@ async def test_e2e_024_edit_preserves_run_history(
     serialized_after = [tuple(r.items()) for r in rows_after]
     assert serialized_before == serialized_after
     _ = REACT_PROMPT
+
+
+async def test_edit_agent_attaches_mcp_catalog_presets(
+    login_as,
+    csrf_token: str,
+    db_engine: AsyncEngine,
+) -> None:
+    """Save changes with mcp_preset_ids attaches the corresponding catalog servers; existing rows stay; duplicates are skipped."""
+    client = await login_as("alice@example.com", name="Alice")
+    agent_id = await _create_agent(client, csrf=csrf_token, name="agent-a")
+
+    edit_csrf = await _csrf_for(client, agent_id)
+    response = await client.post(
+        f"/agents/{agent_id}",
+        data={
+            "name": "agent-a",
+            "mode": "react",
+            "model_provider": "openrouter",
+            "model_endpoint": "https://openrouter.ai/api/v1",
+            "model_id": "anthropic/claude-sonnet-4-5",
+            "provider_api_key": "",
+            "system_prompt": "still here",
+            "max_loops": "10",
+            "max_tokens": "8000",
+            "similarity_threshold": "0.95",
+            "csrf_token": edit_csrf,
+            # Two catalog presets (one duplicate to test idempotency on second save below).
+            "mcp_preset_ids": ["duckduckgo", "fetch"],
+        },
+    )
+    assert response.status_code == 302, response.text
+
+    async with db_engine.begin() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT transport, command, url FROM agent_mcp_servers "
+                "WHERE agent_id = :aid ORDER BY transport, command"
+            ),
+            {"aid": str(agent_id)},
+        )
+        attached = [(r["transport"], r["command"], r["url"]) for r in rows.mappings()]
+    assert ("stdio", "uvx duckduckgo-mcp-server", None) in attached
+    assert ("stdio", "uvx mcp-server-fetch", None) in attached
+    assert len(attached) == 2
+
+    # Re-saving with the same selection must not create duplicates.
+    edit_csrf = await _csrf_for(client, agent_id)
+    response = await client.post(
+        f"/agents/{agent_id}",
+        data={
+            "name": "agent-a",
+            "mode": "react",
+            "model_provider": "openrouter",
+            "model_endpoint": "https://openrouter.ai/api/v1",
+            "model_id": "anthropic/claude-sonnet-4-5",
+            "provider_api_key": "",
+            "system_prompt": "still here",
+            "max_loops": "10",
+            "max_tokens": "8000",
+            "similarity_threshold": "0.95",
+            "csrf_token": edit_csrf,
+            "mcp_preset_ids": ["duckduckgo", "fetch", "context7"],
+        },
+    )
+    assert response.status_code == 302, response.text
+
+    async with db_engine.begin() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT transport, command, url FROM agent_mcp_servers "
+                "WHERE agent_id = :aid ORDER BY transport, command"
+            ),
+            {"aid": str(agent_id)},
+        )
+        attached = [(r["transport"], r["command"], r["url"]) for r in rows.mappings()]
+    # DDG + fetch from first save (deduplicated), Context7 newly added.
+    assert ("stdio", "uvx duckduckgo-mcp-server", None) in attached
+    assert ("stdio", "uvx mcp-server-fetch", None) in attached
+    assert ("streamable_http", None, "https://mcp.context7.com/mcp") in attached
+    assert len(attached) == 3

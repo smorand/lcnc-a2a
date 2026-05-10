@@ -84,20 +84,45 @@ async def new_mcp_form(
     csrf: CSRFManager = Depends(get_csrf_manager),
     templates: Jinja2Templates = Depends(get_templates),
 ) -> Response:
-    """Render the empty add-MCP-server form."""
+    """Render the empty add-MCP-server form, optionally prefilled from a catalog preset."""
     if user is None:
         return RedirectResponse(url="/login", status_code=302)
     agent = await get_agent_for_user(db, agent_id=agent_id, user_id=user.id)
     if agent is None:
         return Response(content="not_found", status_code=404)
+
+    form: dict[str, str] = {"transport": "stdio"}
+    notice: str | None = None
+    preset_id = request.query_params.get("preset")
+    if preset_id:
+        from lcnc_a2a.services.mcp_catalog import get_entry as _catalog_get
+
+        entry = _catalog_get(preset_id)
+        if entry is not None:
+            form["transport"] = entry.transport
+            if entry.command:
+                form["command"] = entry.command
+            if entry.url:
+                form["url"] = entry.url
+            if entry.env:
+                import json as _json
+
+                form["env"] = _json.dumps(entry.env, indent=2)
+            if entry.headers:
+                import json as _json
+
+                form["headers"] = _json.dumps(entry.headers, indent=2)
+            notice = entry.hint
+
     return templates.TemplateResponse(
         request,
         _form_template(request),
         {
             "agent": agent,
             "row": None,
-            "form": {"transport": "stdio"},
+            "form": form,
             "error": None,
+            "preset_notice": notice,
             "csrf_token": csrf.generate(),
             "env_keys": [],
             "header_keys": [],

@@ -48,8 +48,10 @@ Required env (prefix `LCNC_A2A_`): `DATABASE_URL`. Optional: `ENCRYPTION_KEY` (a
 - `src/lcnc_a2a/services/runs.py` - AgentRun lifecycle (create / append step / finalize / list_running_run_ids)
 - `src/lcnc_a2a/observability/` - OpenTelemetry tracer + JSONL exporter with redaction
 - `src/lcnc_a2a/themes/` - Carbon `g100` (dark, default), `g10` (light), `ThemeTokens` dataclass
-- `src/lcnc_a2a/templates/` - Jinja2 templates (`base.html`, `login.html`, `agents/list.html`, `agents/new.html`, `agents/detail.html`, `agents/runs_list.html`, `agents/partials/`)
-- `src/lcnc_a2a/static/css/carbon.css` - copied verbatim from sibling `web-a2a`
+- `src/lcnc_a2a/templates/` - Jinja2 templates: `base.html` (Carbon shell: header + 48 px rail + main + footer), `_macros.html` (icon, tag, status_tag, notice, breadcrumbs, page_head, section_head, kv), `login.html`, `agents/list.html`, `agents/new.html` + `agents/edit.html` (6-step Carbon stepper), `agents/detail.html`, `agents/runs_list.html`, `agents/mcp_form_page.html`, `agents/partials/`
+- `src/lcnc_a2a/static/css/app.css` - Carbon-inspired structural stylesheet (zero color literals, every value via `--c-*` vars)
+- `src/lcnc_a2a/static/css/themes/{g100,g10}.css` - Carbon token sets (`--c-bg`, `--c-layer01..03`, `--c-blue40..80`, `--c-text*`, `--c-border-*`, layout `--rail-w`/`--header-h`/`--footer-h`, IBM Plex Sans/Mono)
+- `src/lcnc_a2a/static/js/agent_form.js` - stepper controller (active step, next/back, jump-to-step), mode-picker cards ↔ select sync, preset content-switcher, API-key-source visibility, range/number slider sync, char counters, dynamic Review pane (KV grid + JSON A2A card preview)
 - `alembic/versions/0001_initial.py` - users + sessions schema
 - `alembic/versions/0002_agents_keys_runs.py` - agents, agent_api_keys, agent_runs schema
 - `alembic/versions/0003_lifecycle_cascade_tables.py` - agent_mcp_servers, agent_contexts, agent_messages, agent_run_steps (final schema; populated in US-004/US-005)

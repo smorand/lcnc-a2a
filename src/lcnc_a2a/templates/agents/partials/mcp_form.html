@@ -1,77 +1,122 @@
 {# Form for adding or editing an MCP server (HTMX partial). #}
+{% from "_macros.html" import icon %}
 {% set is_edit = row is defined and row is not none %}
+{% set tform = form.transport|default('stdio') %}
+
 <section class="mcp-form-section" data-mode="{{ 'edit' if is_edit else 'create' }}">
   {% if error %}
-    <div class="alert alert--error" data-error-code="{{ error }}">
-      <p>{{ error }}</p>
+    <div class="cds-notice cds-notice--error" data-error-code="{{ error }}">
+      <span class="cds-notice-icon">{{ icon("warn") }}</span>
+      <div><strong>Form rejected</strong><div class="cds-notice-body"><code>{{ error }}</code></div></div>
     </div>
   {% endif %}
+  {% if preset_notice %}
+    <div class="cds-notice cds-notice--info">
+      <span class="cds-notice-icon">{{ icon("info") }}</span>
+      <div><strong>Preset prefilled</strong><div class="cds-notice-body">{{ preset_notice }}</div></div>
+    </div>
+  {% endif %}
+
   <form method="post"
         action="{% if is_edit %}/agents/{{ agent.id }}/mcp/{{ row.id }}{% else %}/agents/{{ agent.id }}/mcp{% endif %}"
-        class="form mcp-form">
+        class="mcp-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-    <div class="form-section">
-      <h2 class="form-section__title">Transport</h2>
-      <div class="form-grid">
-        <div class="form-row">
-          <label class="label" for="transport">Transport</label>
-          <select class="select" id="transport" name="transport">
-            {% set tform = form.transport|default('stdio') %}
-            <option value="stdio" {% if tform == "stdio" %}selected{% endif %}>stdio</option>
-            <option value="streamable_http" {% if tform == "streamable_http" %}selected{% endif %}>streamable_http</option>
-          </select>
+    <div class="cds-content">
+      <header class="cds-section-head">
+        <div>
+          <h2 class="cds-h2">Transport</h2>
+          <p class="cds-section-desc">Choose how the agent talks to this MCP server.</p>
+        </div>
+      </header>
+
+      <div class="cds-content-switcher" style="margin-bottom:24px;">
+        <label class="cds-cs-btn {% if tform == 'stdio' %}is-selected{% endif %}">
+          <input type="radio" name="transport" value="stdio" {% if tform == "stdio" %}checked{% endif %} hidden>
+          stdio
+        </label>
+        <label class="cds-cs-btn {% if tform == 'streamable_http' %}is-selected{% endif %}">
+          <input type="radio" name="transport" value="streamable_http" {% if tform == "streamable_http" %}checked{% endif %} hidden>
+          streamable_http
+        </label>
+      </div>
+
+      <div class="cds-grid">
+        <div class="cds-grid-col cds-grid-col--12">
+          <div class="cds-field">
+            <label class="cds-label" for="command">Command (stdio)</label>
+            <div class="cds-input-wrap">
+              <input class="cds-input cds-input--mono" id="command" name="command"
+                     value="{{ form.command|default('', true) }}"
+                     placeholder="npx -y @modelcontextprotocol/server-filesystem ./data">
+            </div>
+            <p class="cds-helper">Single command line. The MCP server will speak JSON-RPC over stdin/stdout.</p>
+          </div>
+        </div>
+        <div class="cds-grid-col cds-grid-col--6">
+          <div class="cds-field">
+            <label class="cds-label" for="env">Env (JSON object)</label>
+            <textarea class="cds-textarea cds-textarea--mono" id="env" name="env"
+                      placeholder='{"GITHUB_TOKEN":"ghp_..."}'>{{ form.env|default('', true) }}</textarea>
+            {% if is_edit and env_keys %}
+              <p class="cds-helper mcp-env-mask">
+                Stored env keys: {% for k in env_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
+              </p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="cds-grid-col cds-grid-col--6">
+          <div class="cds-field">
+            <label class="cds-label" for="cwd">Working directory (optional)</label>
+            <div class="cds-input-wrap">
+              <input class="cds-input cds-input--mono" id="cwd" name="cwd"
+                     value="{{ form.cwd|default('', true) }}"
+                     placeholder="/srv/data">
+            </div>
+          </div>
+        </div>
+
+        <div class="cds-grid-col cds-grid-col--12">
+          <div class="cds-field">
+            <label class="cds-label" for="url">URL (streamable_http)</label>
+            <div class="cds-input-wrap">
+              <input class="cds-input cds-input--mono" id="url" name="url"
+                     value="{{ form.url|default('', true) }}"
+                     placeholder="https://mcp.example.com">
+            </div>
+          </div>
+        </div>
+        <div class="cds-grid-col cds-grid-col--12">
+          <div class="cds-field">
+            <label class="cds-label" for="headers">Headers (JSON object)</label>
+            <textarea class="cds-textarea cds-textarea--mono" id="headers" name="headers"
+                      placeholder='{"Authorization":"Bearer ..."}'>{{ form.headers|default('', true) }}</textarea>
+            {% if is_edit and header_keys %}
+              <p class="cds-helper mcp-header-mask">
+                Stored headers: {% for k in header_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
+              </p>
+            {% endif %}
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="form-section">
-      <h2 class="form-section__title">stdio</h2>
-      <div class="form-row">
-        <label class="label" for="command">Command</label>
-        <input class="input" id="command" name="command" value="{{ form.command|default('', true) }}">
+    <footer class="cds-footer">
+      <div class="cds-footer-left">
+        <span class="cds-footer-status">{{ icon("info") }} <span>{% if is_edit %}Editing{% else %}New{% endif %} {{ tform }} server</span></span>
       </div>
-      <div class="form-row">
-        <label class="label" for="env">Env (JSON object)</label>
-        <textarea class="textarea" id="env" name="env">{{ form.env|default('', true) }}</textarea>
-        {% if is_edit and env_keys %}
-          <p class="form-row__hint mcp-env-mask">
-            Stored env keys: {% for k in env_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
-          </p>
+      <div class="cds-footer-right">
+        <a class="cds-btn cds-btn--ghost" href="/agents/{{ agent.id }}"><span>Cancel</span></a>
+        {% if is_edit %}
+          <button class="cds-btn cds-btn--tertiary" type="submit"
+                  formaction="/agents/{{ agent.id }}/mcp/{{ row.id }}/discover" formmethod="post">
+            <span>Discover tools</span>{{ icon("refresh") }}
+          </button>
         {% endif %}
+        <button class="cds-btn cds-btn--primary" type="submit">
+          <span>{{ "Save" if is_edit else "Create" }}</span>{{ icon("check") }}
+        </button>
       </div>
-      <div class="form-row">
-        <label class="label" for="cwd">Working directory (optional)</label>
-        <input class="input" id="cwd" name="cwd" value="{{ form.cwd|default('', true) }}">
-      </div>
-    </div>
-
-    <div class="form-section">
-      <h2 class="form-section__title">streamable_http</h2>
-      <div class="form-row">
-        <label class="label" for="url">URL</label>
-        <input class="input" id="url" name="url" value="{{ form.url|default('', true) }}">
-      </div>
-      <div class="form-row">
-        <label class="label" for="headers">Headers (JSON object)</label>
-        <textarea class="textarea" id="headers" name="headers">{{ form.headers|default('', true) }}</textarea>
-        {% if is_edit and header_keys %}
-          <p class="form-row__hint mcp-header-mask">
-            Stored headers: {% for k in header_keys %}<code>{{ k }}=********</code>{% if not loop.last %}, {% endif %}{% endfor %}
-          </p>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="btn-group">
-      <button class="btn btn--primary" type="submit">{{ "Save" if is_edit else "Create" }}</button>
-      {% if is_edit %}
-        <button class="btn btn--secondary mcp-discover-btn"
-                type="submit"
-                formaction="/agents/{{ agent.id }}/mcp/{{ row.id }}/discover"
-                formmethod="post">Discover tools</button>
-      {% endif %}
-      <a class="btn btn--ghost" href="/agents/{{ agent.id }}">Cancel</a>
-    </div>
+    </footer>
   </form>
 </section>

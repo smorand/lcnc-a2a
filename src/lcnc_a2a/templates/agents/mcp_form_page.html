@@ -1,17 +1,21 @@
 {# Full-page wrapper for the MCP form (used on direct browser navigation).
    HTMX requests still receive the bare partial via the same route. #}
 {% extends "base.html" %}
+{% from "_macros.html" import breadcrumbs %}
 {% block title %}{{ "Edit MCP server" if row else "Add MCP server" }} — {{ agent.name }}{% endblock %}
 {% block content %}
-<section class="app-page">
-  <header class="app-page-header">
-    <div class="app-page-title">
-      <h1>{{ "Edit MCP server" if row else "Add MCP server" }}</h1>
-      <p class="app-page-title__subtitle">
-        Agent <a href="/agents/{{ agent.id }}">{{ agent.name }}</a>
-      </p>
-    </div>
-  </header>
-  {% include "agents/partials/mcp_form.html" %}
-</section>
+{{ breadcrumbs([
+  {"label": "Agents",   "href": "/agents"},
+  {"label": agent.name, "href": "/agents/" ~ agent.id},
+  {"label": ("Edit MCP server" if row else "Add MCP server"), "href": ""}
+]) }}
+
+<header class="cds-page-head">
+  <div>
+    <h1>{{ "Edit MCP server" if row else "Add MCP server" }}</h1>
+    <p>Agent <a href="/agents/{{ agent.id }}">{{ agent.name }}</a></p>
+  </div>
+</header>
+
+{% include "agents/partials/mcp_form.html" %}
 {% endblock %}
