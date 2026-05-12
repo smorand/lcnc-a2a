@@ -31,20 +31,20 @@
       </header>
 
       <div class="cds-content-switcher" style="margin-bottom:24px;">
-        <label class="cds-cs-btn {% if tform == 'stdio' %}is-selected{% endif %}">
+        <label class="cds-cs-btn">
           <input type="radio" name="transport" value="stdio" {% if tform == "stdio" %}checked{% endif %} hidden>
-          stdio
+          Stdio
         </label>
-        <label class="cds-cs-btn {% if tform == 'streamable_http' %}is-selected{% endif %}">
+        <label class="cds-cs-btn">
           <input type="radio" name="transport" value="streamable_http" {% if tform == "streamable_http" %}checked{% endif %} hidden>
-          streamable_http
+          Streamable HTTP
         </label>
       </div>
 
-      <div class="cds-grid">
-        <div class="cds-grid-col cds-grid-col--12">
+      <div class="cds-grid" data-transport-fields>
+        <div class="cds-grid-col cds-grid-col--12" data-transport-field="stdio">
           <div class="cds-field">
-            <label class="cds-label" for="command">Command (stdio)</label>
+            <label class="cds-label" for="command">Command</label>
             <div class="cds-input-wrap">
               <input class="cds-input cds-input--mono" id="command" name="command"
                      value="{{ form.command|default('', true) }}"
@@ -53,7 +53,7 @@
             <p class="cds-helper">Single command line. The MCP server will speak JSON-RPC over stdin/stdout.</p>
           </div>
         </div>
-        <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-grid-col cds-grid-col--6" data-transport-field="stdio">
           <div class="cds-field">
             <label class="cds-label" for="env">Env (JSON object)</label>
             <textarea class="cds-textarea cds-textarea--mono" id="env" name="env"
@@ -65,7 +65,7 @@
             {% endif %}
           </div>
         </div>
-        <div class="cds-grid-col cds-grid-col--6">
+        <div class="cds-grid-col cds-grid-col--6" data-transport-field="stdio">
           <div class="cds-field">
             <label class="cds-label" for="cwd">Working directory (optional)</label>
             <div class="cds-input-wrap">
@@ -76,9 +76,9 @@
           </div>
         </div>
 
-        <div class="cds-grid-col cds-grid-col--12">
+        <div class="cds-grid-col cds-grid-col--12" data-transport-field="streamable_http">
           <div class="cds-field">
-            <label class="cds-label" for="url">URL (streamable_http)</label>
+            <label class="cds-label" for="url">URL</label>
             <div class="cds-input-wrap">
               <input class="cds-input cds-input--mono" id="url" name="url"
                      value="{{ form.url|default('', true) }}"
@@ -86,7 +86,7 @@
             </div>
           </div>
         </div>
-        <div class="cds-grid-col cds-grid-col--12">
+        <div class="cds-grid-col cds-grid-col--12" data-transport-field="streamable_http">
           <div class="cds-field">
             <label class="cds-label" for="headers">Headers (JSON object)</label>
             <textarea class="cds-textarea cds-textarea--mono" id="headers" name="headers"
@@ -120,3 +120,25 @@
     </footer>
   </form>
 </section>
+
+<script>
+(function () {
+  const form = document.querySelector(".mcp-form");
+  if (!form) return;
+  const fields = form.querySelectorAll("[data-transport-field]");
+  const radios = form.querySelectorAll('input[name="transport"]');
+  function apply() {
+    const checked = form.querySelector('input[name="transport"]:checked');
+    const value = checked ? checked.value : "stdio";
+    fields.forEach((el) => {
+      el.hidden = el.getAttribute("data-transport-field") !== value;
+    });
+    radios.forEach((r) => {
+      const label = r.closest("label.cds-cs-btn");
+      if (label) label.classList.toggle("is-selected", r.checked);
+    });
+  }
+  radios.forEach((r) => r.addEventListener("change", apply));
+  apply();
+})();
+</script>

@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ThemeName = Literal["g100", "g10"]
+ThemeName = Literal["g100", "g10", "v2"]
 
 
 class Settings(BaseSettings):

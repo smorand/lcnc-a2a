@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_head, section_head %}
+{% block title %}Settings — LCNC A2A Builder{% endblock %}
+
+{% block content %}
+{{ page_head("Settings", "User preferences for this browser. Stored in a long-lived cookie.") }}
+
+<form method="post" action="/settings/appearance" class="cds-settings-form">
+  <input type="hidden" name="csrf_token" value="{{ new_csrf_token() }}">
+  <input type="hidden" name="next" value="/settings">
+
+  <section class="cds-settings-section">
+    {{ section_head("Appearance") }}
+
+    <div class="cds-settings-row">
+      <div class="cds-settings-row-text">
+        <span class="cds-settings-row-label">Dark mode</span>
+        <span class="cds-settings-row-desc">Use the Carbon Gray 100 palette. Off uses Gray 10. Ignored when an alternative theme is selected.</span>
+      </div>
+      <div class="cds-settings-row-control">
+        <label class="cds-toggle">
+          <input type="checkbox" name="dark" value="on"
+                 {% if dark %}checked{% endif %}
+                 onchange="this.form.submit()">
+          <span class="cds-toggle-track"><span class="cds-toggle-thumb"></span></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="cds-settings-row">
+      <div class="cds-settings-row-text">
+        <span class="cds-settings-row-label">Theme</span>
+        <span class="cds-settings-row-desc">Visual identity. Page reloads when changed.</span>
+      </div>
+      <div class="cds-settings-row-control">
+        <div class="cds-select-wrap">
+          <select name="identity" class="cds-select cds-select--sm"
+                  onchange="this.form.submit()" aria-label="Theme identity">
+            {% for value, label in identity_choices %}
+              <option value="{{ value }}" {% if value == identity %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+  </section>
+</form>
+{% endblock %}

@@ -19,6 +19,15 @@
 {% set mode_value = form.mode|default("react") %}
 {% set api_key_source = form.api_key_source|default("input") %}
 
+{# Client-side validation summary, filled in by agent_form.js on Next/submit. #}
+<div class="cds-notice cds-notice--error" data-form-errors hidden>
+  <span class="cds-notice-icon">{{ icon("warn") }}</span>
+  <div>
+    <strong data-form-errors-title>Some fields need attention</strong>
+    <ul class="cds-notice-body" data-form-errors-list></ul>
+  </div>
+</div>
+
 {# ───────── stepper navigation ───────── #}
 <ol class="cds-stepper" role="list" data-stepper>
   {% set _steps = [
@@ -463,11 +472,11 @@
           </div>
           <div class="cds-slider">
             <span class="cds-slider-end">100</span>
-            <input type="range" min="100" max="1000000" step="1000"
+            <input type="range" min="100" max="1000000" step="100"
                    value="{{ form.max_tokens|default('1000000', true) }}"
                    data-slider-for="max_tokens">
             <span class="cds-slider-end">1 000 000</span>
-            <input class="cds-slider-num" type="number" min="100" max="1000000" step="1000"
+            <input class="cds-slider-num" type="number" min="100" max="1000000" step="100"
                    id="max_tokens" name="max_tokens"
                    value="{{ form.max_tokens|default('1000000', true) }}">
           </div>

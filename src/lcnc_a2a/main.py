@@ -23,10 +23,13 @@ from lcnc_a2a.routes import auth as auth_routes
 from lcnc_a2a.routes import dashboard as dashboard_routes
 from lcnc_a2a.routes import mcp as mcp_routes
 from lcnc_a2a.routes import runs as runs_routes
+from lcnc_a2a.routes import settings as settings_routes
+from lcnc_a2a.routes.settings import THEME_COOKIE_NAME
 from lcnc_a2a.services import runs as runs_service
 from lcnc_a2a.services.app_secrets import bootstrap_secrets
 from lcnc_a2a.services.cancellation import CancellationRegistry
 from lcnc_a2a.settings import Settings
+from lcnc_a2a.themes import ALLOWED_THEMES, THEME_LABELS, is_valid_theme
 
 logger = logging.getLogger(__name__)
 ABANDONED_RUN_THRESHOLD = timedelta(hours=1)
@@ -51,7 +54,8 @@ def create_app() -> FastAPI:
     sessions = SessionManager(app_secrets.session_secret, expiry_hours=settings.session_expiry_hours)
     auth_provider = DevModeAuthProvider()
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-    templates.env.globals["theme"] = settings.theme
+    templates.env.globals["theme"] = settings.theme  # default; per-request override via request.state.theme
+    templates.env.globals["theme_choices"] = [(t, THEME_LABELS[t]) for t in ALLOWED_THEMES]
     templates.env.globals["new_csrf_token"] = csrf.generate
     cancellation_registry = CancellationRegistry()
 
@@ -74,6 +78,13 @@ def create_app() -> FastAPI:
         await db.close()
 
     app = FastAPI(title="LCNC A2A Builder", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def resolve_theme(request, call_next):  # type: ignore[no-untyped-def]
+        cookie_theme = request.cookies.get(THEME_COOKIE_NAME)
+        request.state.theme = cookie_theme if is_valid_theme(cookie_theme) else settings.theme
+        return await call_next(request)
+
     app.state.settings = settings
     app.state.crypto = crypto
     app.state.app_secrets = app_secrets
@@ -90,6 +101,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_routes.router)
     app.include_router(mcp_routes.router)
     app.include_router(runs_routes.router)
+    app.include_router(settings_routes.router)
     app.include_router(a2a_routes.router)
 
     return app

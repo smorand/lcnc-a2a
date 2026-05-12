@@ -2,8 +2,9 @@
 {% set _path = request.url.path if request is defined else "" %}
 {% set _is_auth_page = _path == "/login" %}
 {% set _logged_in = user is defined and user %}
+{% set _theme = request.state.theme if (request is defined and request.state is defined and request.state.theme is defined) else theme %}
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme }}">
+<html lang="en" data-theme="{{ _theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,13 +12,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap">
-  <link rel="stylesheet" href="/static/css/themes/{{ theme }}.css">
+  <link rel="stylesheet" href="/static/css/themes/{{ _theme }}.css">
   <link rel="stylesheet" href="/static/css/app.css">
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="cds-shell {% if _is_auth_page %}cds-shell--auth{% endif %}" data-theme="{{ theme }}">
+  <div class="cds-shell {% if _is_auth_page %}cds-shell--auth{% endif %}" data-theme="{{ _theme }}">
     <header class="cds-header" role="banner">
       <button class="cds-header-icon" type="button" aria-label="Menu" tabindex="-1">{{ icon("menu") }}</button>
       <a class="cds-header-brand" href="{{ '/agents' if _logged_in else '/login' }}">
@@ -57,7 +58,10 @@
         {% if _logged_in %}
           {# Future sections (runs, mcp, docs) — placeholder rail items kept for visual parity. #}
           <a class="cds-rail-item" href="/agents" aria-label="Runs">{{ icon("flow") }}</a>
-          <a class="cds-rail-item" href="/agents" aria-label="Tools">{{ icon("setting") }}</a>
+          <a class="cds-rail-item"
+             href="/settings"
+             aria-label="Settings"
+             {% if _path == '/settings' or _path.startswith('/settings/') %}aria-current="page"{% endif %}>{{ icon("setting") }}</a>
         {% endif %}
       </aside>
     {% endif %}

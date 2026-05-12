@@ -424,13 +424,126 @@
     });
   }
 
+  // ---------- validation summary ----------
+
+  function labelFor(field) {
+    if (field.id) {
+      const lbl = field.form
+        ? field.form.querySelector('label[for="' + CSS.escape(field.id) + '"]')
+        : null;
+      if (lbl) {
+        const text = (lbl.textContent || "").replace(/\*$/, "").trim();
+        if (text) return text;
+      }
+    }
+    if (field.getAttribute("aria-label")) return field.getAttribute("aria-label");
+    return field.name || field.id || "field";
+  }
+
+  function paneIndexFor(field) {
+    const pane = field.closest("[data-step-pane]");
+    if (!pane) return -1;
+    const id = pane.getAttribute("data-step-pane");
+    return STEPS.findIndex((s) => s.id === id);
+  }
+
+  function collectInvalid(scope) {
+    return Array.from(scope.querySelectorAll(":invalid")).filter((el) => {
+      // skip disabled controls and template inputs without a name
+      if (el.disabled) return false;
+      return true;
+    });
+  }
+
+  function initValidationUx(form, stepper) {
+    if (!stepper) return;
+    const noticeEl = $(form, "[data-form-errors]");
+    const listEl = $(form, "[data-form-errors-list]");
+    const titleEl = $(form, "[data-form-errors-title]");
+    const nextBtn = $(form, "[data-step-next]");
+
+    function hideNotice() {
+      if (noticeEl) noticeEl.hidden = true;
+    }
+
+    function showSummary(invalids) {
+      if (!noticeEl || !listEl) return;
+      listEl.innerHTML = "";
+      invalids.forEach((field) => {
+        const idx = paneIndexFor(field);
+        const stepLabel = idx >= 0 ? STEPS[idx].label : "Form";
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "#";
+        a.textContent = stepLabel + " — " + labelFor(field) + ": " + (field.validationMessage || "invalid value");
+        a.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          if (idx >= 0) stepper.activate(idx);
+          setTimeout(() => {
+            field.focus();
+            if (typeof field.reportValidity === "function") field.reportValidity();
+          }, 0);
+        });
+        li.appendChild(a);
+        listEl.appendChild(li);
+      });
+      if (titleEl) {
+        titleEl.textContent =
+          invalids.length === 1
+            ? "1 field needs attention"
+            : invalids.length + " fields need attention";
+      }
+      noticeEl.hidden = false;
+      noticeEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // Block Next when current pane has invalid fields; show native bubble on first.
+    if (nextBtn) {
+      nextBtn.addEventListener(
+        "click",
+        (e) => {
+          const panes = $$(form, "[data-step-pane]");
+          const current = panes[stepper.getIndex()];
+          if (!current) return;
+          const invalids = collectInvalid(current);
+          if (invalids.length === 0) {
+            hideNotice();
+            return;
+          }
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          invalids[0].focus();
+          if (typeof invalids[0].reportValidity === "function") {
+            invalids[0].reportValidity();
+          }
+        },
+        true, // capture: run BEFORE the stepper's own click handler
+      );
+    }
+
+    // Submit: show full summary; never reach the server with an invalid form.
+    form.addEventListener("submit", (e) => {
+      if (form.checkValidity()) {
+        hideNotice();
+        return;
+      }
+      e.preventDefault();
+      showSummary(collectInvalid(form));
+    });
+
+    // User starts fixing things → hide the summary.
+    form.addEventListener("input", hideNotice);
+    form.addEventListener("change", hideNotice);
+  }
+
   function initForm(form) {
-    initStepper(form);
+    const stepper = initStepper(form);
     initMode(form);
     initPreset(form);
     initSliders(form);
     initCharCounters(form);
     initPresetCards(form);
+    initValidationUx(form, stepper);
   }
 
   function init() {

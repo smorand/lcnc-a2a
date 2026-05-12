@@ -1,0 +1,24 @@
+{# Full-page wrapper for /discover results (direct browser POST).
+   HTMX requests still receive the bare partial via the same route. #}
+{% extends "base.html" %}
+{% from "_macros.html" import breadcrumbs, page_head %}
+{% block title %}Discovered tools — {{ agent.name }}{% endblock %}
+{% block content %}
+{{ breadcrumbs([
+  {"label": "Agents",   "href": "/agents"},
+  {"label": agent.name, "href": "/agents/" ~ agent.id},
+  {"label": "MCP server", "href": "/agents/" ~ agent.id ~ "/mcp/" ~ row.id},
+  {"label": "Discovered tools", "href": ""}
+]) }}
+
+{{ page_head("Discovered tools", "Refreshed " ~ discovered_at.isoformat() ~ ".") }}
+
+{% include "agents/partials/mcp_tools.html" %}
+
+<footer class="cds-footer">
+  <div class="cds-footer-right">
+    <a class="cds-btn cds-btn--ghost" href="/agents/{{ agent.id }}/mcp/{{ row.id }}"><span>Back to MCP server</span></a>
+    <a class="cds-btn cds-btn--primary" href="/agents/{{ agent.id }}"><span>Back to agent</span></a>
+  </div>
+</footer>
+{% endblock %}

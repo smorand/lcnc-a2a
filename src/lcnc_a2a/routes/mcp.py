@@ -44,6 +44,13 @@ def _form_template(request: Request) -> str:
     return "agents/mcp_form_page.html"
 
 
+def _tools_template(request: Request) -> str:
+    """Pick partial (HTMX) vs full-page (direct nav) for the discovered-tools view."""
+    if request.headers.get("HX-Request") == "true":
+        return "agents/partials/mcp_tools.html"
+    return "agents/mcp_tools_page.html"
+
+
 def _list_entries(servers: list[AgentMcpServer], /) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for row in servers:
@@ -389,8 +396,8 @@ async def discover_mcp_server(
 
     return templates.TemplateResponse(
         request,
-        "agents/partials/mcp_tools.html",
-        {"row": row, "tools": tools, "discovered_at": row.discovered_at},
+        _tools_template(request),
+        {"row": row, "tools": tools, "discovered_at": row.discovered_at, "agent": agent},
     )
 
 

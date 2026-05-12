@@ -1,0 +1,176 @@
+/* ============================================================
+   Theme: v2 (CM intranet aesthetic, light blue-grey)
+
+   Maps the Carbon-style --c-* variables consumed by app.css
+   onto the --v2-* token palette inspired by classic Windows /
+   intranet UI (Segoe UI, navy header, light blue panels).
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* v2 token palette (single source of truth, also reused below) */
+  --v2-navy:        #2d4f7a;
+  --v2-navy-deep:   #274468;
+  --v2-navy-dark:   #1f3a5c;
+  --v2-blue-grey:   #dfe7f0;
+  --v2-blue-grey-hd:#c9d6e5;
+  --v2-band-light:  #eef2f7;
+  --v2-band-dark:   #dde6f0;
+  --v2-page-bg:     #e3e9f0;
+  --v2-pane-header: #cfdbea;
+  --v2-ink:         #1f3a5c;
+  --v2-ink-subtle:  #5a6f8a;
+  --v2-border:      #9bb0c7;
+  --v2-border-soft: #c5d2e0;
+  --v2-input-border:#7b91ac;
+  --v2-orange:      #e9851b;
+  --v2-orange-soft: #f7d8a5;
+  --v2-green:       #3f8a3f;
+  --v2-red:         #b03038;
+  --v2-link:        #1f5fa8;
+  --v2-button-blue: #5f86b3;
+  --v2-button-blue-d:#395f8a;
+  --v2-input-bg:    #ffffff;
+  --v2-input-edit:  #fff3b0;
+  --v2-row-border:  #c2cfdc;
+
+  /* Layers */
+  --c-bg:               var(--v2-page-bg);
+  --c-layer01:          var(--v2-band-light);
+  --c-layer02:          var(--v2-band-dark);
+  --c-layer03:          var(--v2-pane-header);
+  --c-field01:          var(--v2-input-bg);
+  --c-field02:          var(--v2-input-bg);
+
+  /* Borders */
+  --c-border-subtle:    var(--v2-border-soft);
+  --c-border-strong:    var(--v2-border);
+  --c-border-inverse:   var(--v2-navy-dark);
+
+  /* Text */
+  --c-text:             var(--v2-ink);
+  --c-text-secondary:   var(--v2-ink-subtle);
+  --c-text-helper:      var(--v2-input-border);
+  --c-text-placeholder: var(--v2-border);
+  --c-text-on-color:    #ffffff;
+
+  /* Brand blues (gradient: light → dark) */
+  --c-blue40:           var(--v2-button-blue);
+  --c-blue50:           var(--v2-link);
+  --c-blue60:           var(--v2-navy);
+  --c-blue70:           var(--v2-navy-deep);
+  --c-blue80:           var(--v2-navy-dark);
+
+  /* Status */
+  --c-success:          var(--v2-green);
+  --c-warning:          var(--v2-orange);
+  --c-error:            var(--v2-red);
+  --c-error-bg:         #fde2e2;
+
+  /* Icon */
+  --c-icon:             var(--v2-ink);
+  --c-icon-secondary:   var(--v2-ink-subtle);
+
+  --c-skeleton:         var(--v2-blue-grey);
+  --c-focus:            var(--v2-link);
+
+  /* Tags */
+  --c-tag-blue-bg:      var(--v2-pane-header);
+  --c-tag-blue-fg:      var(--v2-navy-dark);
+  --c-tag-green-bg:     #dff0d8;
+  --c-tag-green-fg:     #1d4d1d;
+  --c-tag-yellow-bg:    #fff3b0;
+  --c-tag-yellow-fg:    #884c0d;
+  --c-tag-red-bg:       #fde2e2;
+  --c-tag-red-fg:       #5d141a;
+  --c-tag-gray-bg:      var(--v2-blue-grey);
+  --c-tag-gray-fg:      var(--v2-ink);
+
+  /* Typography (CM intranet defaults) */
+  --font-sans: "Segoe UI", "Open Sans", Tahoma, Arial, sans-serif;
+  --font-mono: "Consolas", "DejaVu Sans Mono", ui-monospace, "SF Mono", monospace;
+  --text-base-size:   13px;
+  --text-line-height: 1.5;
+
+  /* Spacing scale (unchanged, Carbon-aligned) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Radii (slight rounding for the intranet pill aesthetic) */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  /* Layout */
+  --rail-w:           48px;
+  --header-h:         48px;
+  --footer-h:         64px;
+  --row-h:            36px;
+  --content-max-w:    1280px;
+
+  /* Transitions */
+  --transition-fast:     110ms cubic-bezier(0.2, 0, 0.38, 0.9);
+  --transition-moderate: 150ms cubic-bezier(0.2, 0, 0.38, 0.9);
+
+  /* Shadows */
+  --shadow-md: 0 1px 2px rgba(31, 58, 92, 0.10);
+  --shadow-lg: 0 6px 18px rgba(31, 58, 92, 0.18);
+}
+
+/* ============================================================
+   Component overrides scoped to this theme.
+   Only the few touches that make the intranet personality
+   recognisable; everything else inherits from app.css via vars.
+   ============================================================ */
+
+[data-theme="v2"] .cds-header {
+  background: linear-gradient(180deg, #34588a 0%, #2d4f7a 100%);
+  border-bottom: 1px solid var(--v2-navy-dark);
+  color: #ffffff;
+}
+[data-theme="v2"] .cds-header a,
+[data-theme="v2"] .cds-header .cds-brand-text,
+[data-theme="v2"] .cds-header-link,
+[data-theme="v2"] .cds-header-user,
+[data-theme="v2"] .cds-header-icon { color: #ffffff; }
+[data-theme="v2"] .cds-header-link:hover { background: rgba(255, 255, 255, 0.08); }
+
+[data-theme="v2"] .cds-btn--primary {
+  background: linear-gradient(180deg, #6c92bf 0%, #3f6896 60%, #345c8c 100%);
+  color: #ffffff;
+  border: 1px solid var(--v2-button-blue-d);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 0 rgba(0, 0, 0, 0.06);
+}
+[data-theme="v2"] .cds-btn--primary:hover:not([disabled]) {
+  background: linear-gradient(180deg, #5d83b1 0%, #345c8c 100%);
+}
+[data-theme="v2"] .cds-btn--primary[disabled] {
+  background: #a8b8cc;
+  border-color: #889bb3;
+  color: #ebeff5;
+  box-shadow: none;
+}
+[data-theme="v2"] .cds-btn--ghost {
+  background: linear-gradient(180deg, #ffffff, #e6eaf0);
+  color: var(--v2-ink);
+  border: 1px solid var(--v2-input-border);
+}
+[data-theme="v2"] .cds-btn--ghost:hover {
+  background: linear-gradient(180deg, #ffffff, #d3dae3);
+}
+
+/* Inputs warm on focus, like the intranet edit mode. */
+[data-theme="v2"] .cds-input:focus,
+[data-theme="v2"] .cds-textarea:focus,
+[data-theme="v2"] .cds-select:focus {
+  background: var(--v2-input-edit);
+  border-color: #be8c1c;
+}
+
+[data-theme="v2"] .cds-rail { background: var(--v2-blue-grey); border-right: 1px solid var(--v2-border); }
