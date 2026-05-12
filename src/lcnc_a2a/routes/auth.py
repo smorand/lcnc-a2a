@@ -24,7 +24,7 @@ from lcnc_a2a.models.session import Session as SessionModel
 
 EMAIL_MAX_LEN = 255
 NAME_MAX_LEN = 255
-EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+$")
 
 router = APIRouter()
 
