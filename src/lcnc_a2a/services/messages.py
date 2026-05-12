@@ -37,7 +37,12 @@ async def get_or_create_context(
         existing = result.scalar_one_or_none()
         if existing is not None:
             return existing
+    # Honor the client-supplied contextId so subsequent turns find the same
+    # row. Without this, A2A's stable conversation identifier is silently
+    # replaced by a server-generated UUID and history is lost across turns.
     context = AgentContext(agent_id=agent_id)
+    if context_id is not None:
+        context.id = context_id
     db.add(context)
     await db.flush()
     await db.refresh(context)
